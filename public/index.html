@@ -51,13 +51,22 @@
         <select id="profile">
           <option value="normal" selected>Normal (~45 MB/sa)</option>
           <option value="iyi">İyi (~85 MB/sa)</option>
+          <option value="hd">HD 720p (~800 MB/sa)</option>
           <option value="ses">Sadece ses (~15 MB/sa)</option>
+        </select>
+      </div>
+      <div class="row"><span>Codec seçimi</span>
+        <select id="codec">
+          <option value="auto" selected>Otomatik</option>
+          <option value="av1">AV1 (en verimli)</option>
+          <option value="vp9">VP9</option>
+          <option value="h264">H.264</option>
         </select>
       </div>
       <div class="row"><span>Giden</span><b id="sOut">-</b></div>
       <div class="row"><span>Gelen</span><b id="sIn">-</b></div>
       <div class="row"><span>Karşı görüntü</span><b id="sRes">-</b></div>
-      <div class="row"><span>Codec</span><b id="sCodec">-</b></div>
+      <div class="row"><span>Kullanılan codec</span><b id="sCodec">-</b></div>
       <div class="row"><span>Bağlantı</span><b id="sPath">-</b></div>
       <div class="row"><span>Bu görüşme</span><b id="sTotal">-</b></div>
       <div class="row"><span>Saatlik</span><b id="sHour">-</b></div>
@@ -67,6 +76,6 @@
 
   <script src="peerjs.min.js?v=1"></script>
   <script src="enhance.js?v=3"></script>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

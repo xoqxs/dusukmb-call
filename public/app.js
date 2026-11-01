@@ -7,6 +7,7 @@
     ses:    { audioOnly: true, abr: 10000 },                     // ~15 MB/saat
     normal: { w: 240, h: 180, fps: 12, vbr: 32000, abr: 10000 }, // ~47 MB/saat
     iyi:    { w: 320, h: 240, fps: 15, vbr: 70000, abr: 16000 }, // ~85 MB/saat
+    hd:     { w: 1280, h: 720, fps: 24, vbr: 900000, abr: 24000, capW: 1280, capH: 720 }, // 720p, ~800 MB/saat
   };
   const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -16,7 +17,7 @@
   const localVideo = $('localVideo'), remoteVideo = $('remoteVideo'), remoteCanvas = $('remoteCanvas');
   const statusEl = $('status');
 
-  let pc, localStream, room, iceConfig, profile = 'normal';
+  let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false;
   window.__dusukmb = { get pc() { return pc; } }; // hata ayıklama için
@@ -156,6 +157,9 @@
         if (pc && pc.remoteDescription) { try { await pc.addIceCandidate(msg.candidate); } catch (e) { console.warn(e); } }
         else pendingIce.push(msg.candidate);
         break;
+      case 'codec':
+        setCodec(msg.value, false);
+        break;
       case 'profile':
         if (PROFILES[msg.value]) { profile = msg.value; $('profile').value = profile; applyProfile(); }
         break;
@@ -238,7 +242,10 @@
     if (!transceiver.setCodecPreferences || !RTCRtpReceiver.getCapabilities) return;
     const caps = RTCRtpReceiver.getCapabilities('video');
     if (!caps) return;
-    const order = (IS_IOS || remoteIOS) ? ['video/H264', 'video/VP8', 'video/VP9'] : ['video/VP9', 'video/VP8', 'video/H264'];
+    const auto = (IS_IOS || remoteIOS) ? ['video/H264', 'video/VP8', 'video/VP9'] : ['video/VP9', 'video/VP8', 'video/H264'];
+    const pick = { av1: 'video/AV1', vp9: 'video/VP9', h264: 'video/H264' }[codecPref];
+    // Seçilen codec en başa; karşı taraf desteklemezse sıradaki otomatik kullanılır
+    const order = pick ? [pick, ...auto.filter((m) => m !== pick)] : auto;
     const rank = (c) => { const i = order.indexOf(c.mimeType); return i === -1 ? 99 : i; };
     try { transceiver.setCodecPreferences([...caps.codecs].sort((a, b) => rank(a) - rank(b))); } catch (e) { console.warn(e); }
   }
@@ -266,7 +273,10 @@
     const p = PROFILES[profile];
     const vt = localStream && localStream.getVideoTracks()[0];
     if (vt && !p.audioOnly) {
-      try { await vt.applyConstraints({ frameRate: { ideal: p.fps, max: p.fps } }); } catch {}
+      // HD için kamerayı 1280×720 aç; diğer profillerde 480×360'a dön (pil ve işlemci için)
+      const capW = p.capW || 480, capH = p.capH || 360;
+      const wantFps = Math.max(p.fps, 15);
+      try { await vt.applyConstraints({ width: { ideal: capW }, height: { ideal: capH }, frameRate: { ideal: wantFps, max: wantFps } }); } catch {}
     }
     localVideo.classList.toggle('dim', !!p.audioOnly);
     if (pc && pc.connectionState === 'connected') setStatus(p.audioOnly ? '🔈 Sadece ses modu' : '');
@@ -395,6 +405,34 @@
     $('chatInput').value = '';
   };
   $('profile').onchange = (e) => { profile = e.target.value; applyProfile(); signal({ type: 'profile', value: profile }); };
+
+  // ---------- Codec seçimi ----------
+  function supports(mime) {
+    const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities('video');
+    return !!(caps && caps.codecs.some((c) => c.mimeType === mime));
+  }
+  function setCodec(value, fromMe) {
+    if (!['auto', 'av1', 'vp9', 'h264'].includes(value)) return;
+    codecPref = value;
+    $('codec').value = value;
+    if (value === 'av1' && !supports('video/AV1')) {
+      setStatus('Bu cihaz AV1 desteklemiyor, en yakın codec kullanılacak');
+      setTimeout(() => setStatus(''), 3000);
+    }
+    if (fromMe) signal({ type: 'codec', value });
+    // Görüşme açıksa codec'i değiştirmek için bağlantıyı yeniden anlaştır (teklifi hep "a" yapar)
+    if (pc && myRole === 'a' && pc.signalingState === 'stable') {
+      for (const tr of pc.getTransceivers()) {
+        if (tr.receiver.track && tr.receiver.track.kind === 'video') preferCodecs(tr);
+      }
+      makeOffer();
+    }
+  }
+  $('codec').onchange = (e) => setCodec(e.target.value, true);
+  if (!supports('video/AV1')) {
+    const o = $('codec').querySelector('option[value="av1"]');
+    if (o) o.textContent += ' (bu cihazda yok)';
+  }
   $('shareBtn').onclick = async () => {
     const url = `${location.origin}${location.pathname}?oda=${encodeURIComponent(room)}`;
     try {
