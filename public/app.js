@@ -23,9 +23,9 @@
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
-  let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null;
+  let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null, frozenSince = 0, lastFrames = -1;
   function resetHourly() { hourBase = null; if ($('sHour')) $('sHour').textContent = 'ölçülüyor…'; }
-  window.__dusukmb = { get pc() { return pc; } }; // hata ayıklama için
+  window.__dusukmb = { get pc() { return pc; }, get conn() { return conn; }, get peer() { return peer; } }; // hata ayıklama için
   const enhancer = window.Enhancer ? window.Enhancer.create(remoteVideo, remoteCanvas) : null;
 
   // ---------- Lobi ----------
@@ -52,6 +52,7 @@
       return;
     }
     localVideo.srcObject = localStream;
+    loadChat();
     lobby.classList.add('hidden');
     call.classList.remove('hidden');
     setStatus('Sunucuya bağlanıyor…');
@@ -60,7 +61,7 @@
     try { const r = await fetch('config.json', { cache: 'no-store' }); if (r.ok) cfg = await r.json(); } catch {}
     signalCfg = cfg.signal || { host: '0.peerjs.com', port: 443, secure: true, path: '/', key: 'peerjs' };
     iceConfig = { iceServers: cfg.iceServers || [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] };
-    connectSignal('a');
+    startSignal();
   }
 
   function alertInline(t) {
@@ -73,66 +74,126 @@
   // Odaya ilk giren "a", ikinci giren "b" kimliğini alır. "b", "a"ya küçük bir veri kanalı açar;
   // görüşme kurulum mesajları (offer/answer/ice) bu kanaldan gider. Görüntü/ses ayrı bağlantıdan akar.
   let signalCfg, myRole = null, myId = '', otherId = '', peer = null, conn = null, retryTimer = null;
+  let myToken = '', triedRoles = new Set(), fullTimer = null, fullSince = 0;
   function roomKey(r) {
     let h = 0x811c9dc5;
     for (const ch of r) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
     return `dusukmb-${r.replace(/[^a-z0-9]/g, '').slice(0, 16)}-${h.toString(16)}`;
   }
-  function connectSignal(role) {
+  // Sayfa yenilenince aynı kimlik + aynı gizli anahtarla dön: sunucu eski oturumu bize geri verir
+  // (yoksa eski kimlik ~1 dk "dolu" görünür ve oda dolu sanılır)
+  const sessKey = () => 'dusukmb:' + roomKey(room);
+  function loadSess() { try { return JSON.parse(sessionStorage.getItem(sessKey()) || 'null'); } catch { return null; } }
+  function saveSess() { try { sessionStorage.setItem(sessKey(), JSON.stringify({ role: myRole, token: myToken })); } catch {} }
+  function clearSess() { try { sessionStorage.removeItem(sessKey()); } catch {} }
+  function startSignal() {
+    const s = loadSess();
+    triedRoles = new Set();
+    if (s && (s.role === 'a' || s.role === 'b') && s.token) connectSignal(s.role, s.token);
+    else connectSignal('a');
+  }
+  function connectSignal(role, token) {
+    if (peer && !peer.destroyed) { try { peer.destroy(); } catch {} }
     const base = roomKey(room);
-    myRole = role; myId = `${base}-${role}`; otherId = `${base}-${role === 'a' ? 'b' : 'a'}`;
+    myRole = role; myToken = token || Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    myId = `${base}-${role}`; otherId = `${base}-${role === 'a' ? 'b' : 'a'}`;
+    triedRoles.add(role);
     const c = signalCfg;
-    const p = new Peer(myId, { host: c.host, port: Number(c.port), secure: c.secure, path: c.path, key: c.key, config: iceConfig, debug: 0 });
+    const p = new Peer(myId, { host: c.host, port: Number(c.port), secure: c.secure, path: c.path, key: c.key, token: myToken, config: iceConfig, debug: 0 });
     peer = p;
     p.on('open', () => {
+      saveSess();
+      clearTimeout(fullTimer); fullSince = 0;
       if (myRole === 'a') { if (!pc) setStatus('Karşı taraf bekleniyor… Linki paylaş 🔗'); }
-      else { setStatus('Bağlanıyor…'); connectToA(); }
+      else { if (!pc) setStatus('Bağlanıyor…'); connectToA(); }
     });
     p.on('connection', (c2) => { if (c2.peer === otherId) attachConn(c2); else c2.close(); });
     p.on('disconnected', () => { if (!leaving && !p.destroyed) { try { p.reconnect(); } catch {} } });
     p.on('error', (e) => {
+      if (p !== peer) return;
       if (e.type === 'unavailable-id') {
-        p.destroy();
-        if (role === 'a') connectSignal('b'); else onSignal({ type: 'full' });
+        // Bu rol dolu: diğerini dene. İkisi de doluysa eski oturumlar düşene kadar bekle, sonra tekrar dene.
+        const other = role === 'a' ? 'b' : 'a';
+        if (!triedRoles.has(other)) { connectSignal(other); return; }
+        onSignal({ type: 'full' });
       } else if (e.type === 'peer-unavailable') {
-        // "a" henüz/artık yok: biraz sonra tekrar dene
-        scheduleRetry();
-      } else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(e.type)) {
+        scheduleRetry(); // "a" henüz/artık yok
+      } else if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected'].includes(e.type)) {
         if (leaving) return;
-        setStatus('Sunucuya ulaşılamıyor, tekrar deneniyor…');
+        if (!pc || pc.connectionState !== 'connected') setStatus('Sunucuya ulaşılamıyor, tekrar deneniyor…');
         clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => { try { p.destroy(); } catch {} connectSignal('a'); }, 3000);
+        // Aynı rol ve anahtarla yeniden bağlan (kimlik kaybolmasın)
+        retryTimer = setTimeout(() => { triedRoles = new Set(); connectSignal(myRole, myToken); }, 2500);
       } else console.warn('sinyal', e.type, e);
     });
   }
-  function scheduleRetry() {
+  function scheduleRetry(ms = 3000) {
     clearTimeout(retryTimer);
-    if (!leaving && myRole === 'b') retryTimer = setTimeout(connectToA, 3000);
+    if (!leaving && myRole === 'b') retryTimer = setTimeout(connectToA, ms);
   }
   function connectToA() {
     if (!peer || peer.destroyed || leaving) return;
+    if (peer.disconnected) { try { peer.reconnect(); } catch {} scheduleRetry(2000); return; }
     if (conn && conn.open) return;
     attachConn(peer.connect(otherId, { serialization: 'binary', reliable: true }));
+    // Açılmazsa (ağ değişimi vb.) kendiliğinden yeniden dene
+    const c = conn;
+    setTimeout(() => { if (conn === c && !c.open && !leaving) { try { c.close(); } catch {} if (conn === c) conn = null; connectToA(); } }, 8000);
   }
   function attachConn(c) {
-    if (conn && conn !== c) { try { conn.close(); } catch {} }
+    if (conn && conn !== c) { const old = conn; conn = c; try { old.close(); } catch {} }
     conn = c;
-    c.on('open', () => { if (myRole === 'b') { isOfferer = false; signal({ type: 'hello', ios: IS_IOS }); } });
-    c.on('data', (m) => { if (m && m.type) onSignal(m); });
+    c.on('open', () => {
+      if (conn !== c) return;
+      if (myRole === 'b') { isOfferer = false; signal({ type: 'hello', ios: IS_IOS }); }
+      chatOnConnect();
+    });
+    c.on('data', (m) => { if (conn === c && m && m.type) onSignal(m); });
     c.on('close', () => {
       if (conn !== c) return;
       conn = null;
-      if (!leaving) { onSignal({ type: 'bye' }); scheduleRetry(); }
+      refreshPeerStatus();
+      if (!leaving) { onSignal({ type: 'bye' }); scheduleRetry(1500); }
     });
-    c.on('error', () => scheduleRetry());
+    c.on('error', () => scheduleRetry(1500));
   }
+  // Bağlantıyı baştan kur (ağ değişti, görüntü dondu…). "b" yeniden bağlanır, "a" bekler.
+  let lastRecover = 0;
+  function recover(reason) {
+    if (leaving || Date.now() - lastRecover < 4000) return;
+    lastRecover = Date.now();
+    console.log('yeniden bağlanılıyor:', reason);
+    setStatus('Bağlantı yenileniyor…');
+    if (peer && peer.disconnected && !peer.destroyed) { try { peer.reconnect(); } catch {} }
+    if (myRole === 'b') {
+      const old = conn; conn = null;
+      if (old) { try { old.close(); } catch {} }
+      resetPc();
+      scheduleRetry(800);
+    } else {
+      signal({ type: 'restart' }); // veri kanalı hâlâ açıksa "b"ye haber ver
+    }
+  }
+  window.addEventListener('online', () => recover('online'));
+  if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', () => recover('ağ değişti'));
   function signal(msg) { if (conn && conn.open) conn.send(msg); }
 
   async function onSignal(msg) {
     switch (msg.type) {
       case 'full':
-        setStatus('Bu oda dolu (en fazla 2 kişi).');
-        leaving = true; if (peer) peer.destroy();
+        // İki kimlik de dolu. Eski (kapanmış) bir oturum olabilir: sunucu onu ~1 dk içinde düşürür.
+        if (!fullSince) fullSince = Date.now();
+        if (Date.now() - fullSince > 75000) {
+          setStatus('Bu oda dolu (en fazla 2 kişi). Başka bir oda kodu dene.');
+          if (peer) peer.destroy();
+          break;
+        }
+        setStatus('Oda dolu görünüyor, bekleniyor…');
+        clearTimeout(fullTimer);
+        fullTimer = setTimeout(() => { triedRoles = new Set(); connectSignal('a'); }, 5000);
+        break;
+      case 'restart':
+        if (myRole === 'b') { lastRecover = 0; recover('karşı taraf istedi'); }
         break;
       case 'hello':
         // İlk giren taraf ("a") teklifi oluşturur
@@ -173,7 +234,18 @@
         showSnap(msg);
         break;
       case 'chat':
-        addChat(String(msg.text || '').slice(0, 1000), 'them');
+        onChatMessage(msg);
+        break;
+      case 'chat-ack':
+        onChatAck([msg.id], 'delivered');
+        break;
+      case 'chat-read':
+        onChatAck(Array.isArray(msg.ids) ? msg.ids : [], 'read');
+        break;
+      case 'typing':
+        setPeerStatus('yazıyor…');
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(refreshPeerStatus, 3500);
         break;
       case 'bye':
         setStatus('Karşı taraf ayrıldı. Bekleniyor…');
@@ -217,15 +289,19 @@
         if (enhancer) enhancer.start();
       }
     };
+    const thisPc = pc;
+    let discTimer = null;
     pc.onconnectionstatechange = () => {
+      if (pc !== thisPc) return;
       const s = pc.connectionState;
-      if (s === 'connected') { setStatus(''); if (!callStart) callStart = Date.now(); startStats(); applyProfile(); }
-      else if (s === 'disconnected') setStatus('Bağlantı zayıf…');
-      else if (s === 'failed') {
-        // Karşı taraf gitti ya da ağ koptu: baştan kurmayı dene, karşı taraf hâlâ oradaysa yanıt verir
-        setStatus('Bağlantı koptu. Karşı taraf bekleniyor…');
-        resetPc();
-        if (myRole === 'b') signal({ type: 'hello', ios: IS_IOS });
+      clearTimeout(discTimer);
+      if (s === 'connected') { setStatus(PROFILES[profile].audioOnly ? '🔈 Sadece ses modu' : ''); if (!callStart) callStart = Date.now(); frozenSince = 0; startStats(); applyProfile(); }
+      else if (s === 'disconnected') {
+        setStatus('Bağlantı zayıf…');
+        // Ağ değişiminde tarayıcı "failed" demeden önce 20-30 sn bekleyebilir; 4 sn sonra kendimiz yenileyelim
+        discTimer = setTimeout(() => { if (pc === thisPc && pc.connectionState !== 'connected') recover('bağlantı koptu'); }, 4000);
+      } else if (s === 'failed') {
+        recover('bağlantı başarısız');
       }
     };
     return pc;
@@ -241,7 +317,7 @@
 
   function resetPc() {
     if (pc) { pc.close(); pc = null; }
-    pendingIce = []; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null;
+    pendingIce = []; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
     if (enhancer) enhancer.stop();
     stopStats();
   }
@@ -399,6 +475,15 @@
     if (!pair) report.forEach((s) => { if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s; });
     report.forEach((s) => {
       if (s.type === 'inbound-rtp' && s.kind === 'video') {
+        // Görüntü donmuş mu? (kare sayısı artmıyor)
+        const p = PROFILES[profile];
+        const expectVideo = !p.audioOnly && !(p.snap || p.vbr < 30000);
+        const fd = s.framesDecoded || 0;
+        if (expectVideo && pc.connectionState === 'connected' && fd === lastFrames) {
+          if (!frozenSince) frozenSince = Date.now();
+          else if (Date.now() - frozenSince > 8000) { frozenSince = 0; recover('görüntü dondu'); }
+        } else frozenSince = 0;
+        lastFrames = fd;
         res = `${s.frameWidth || '?'}×${s.frameHeight || '?'} @ ${Math.round(s.framesPerSecond || 0)} fps`;
         if (s.codecId && byId.get(s.codecId)) codec = byId.get(s.codecId).mimeType.replace('video/', '');
       }
@@ -454,35 +539,118 @@
   };
   $('statsBtn').onclick = () => $('stats').classList.toggle('hidden');
 
-  // ---------- Sohbet ----------
-  let unread = 0;
-  function addChat(text, who) {
-    if (!text) return;
-    const row = document.createElement('div');
-    row.className = 'msg ' + who;
-    row.textContent = text;
-    const time = document.createElement('small');
-    time.textContent = new Date().toTimeString().slice(0, 5);
-    row.appendChild(time);
-    $('chatLog').appendChild(row);
-    $('chatLog').scrollTop = $('chatLog').scrollHeight;
-    if (who === 'them' && $('chat').classList.contains('hidden')) {
-      unread++; $('chatBadge').textContent = unread; $('chatBadge').classList.remove('hidden');
+  // ---------- Sohbet (WhatsApp tarzı) ----------
+  // Mesajlar doğrudan telefondan telefona gider. Bağlantı yokken yazılanlar sıraya alınır, bağlanınca gönderilir.
+  // Geçmiş bu telefonda (localStorage) saklanır; sunucuya gitmez.
+  let chat = [], unread = 0, typingTimer = null, lastTypingSent = 0;
+  const chatKey = () => 'dusukmb-chat:' + roomKey(room);
+  const chatOpen = () => !$('chat').classList.contains('hidden');
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  function saveChat() { try { localStorage.setItem(chatKey(), JSON.stringify(chat.slice(-200))); } catch {} }
+  function loadChat() {
+    try { chat = JSON.parse(localStorage.getItem(chatKey()) || '[]'); } catch { chat = []; }
+    renderChat();
+  }
+  const fmtTime = (t) => { const d = new Date(t); return d.toTimeString().slice(0, 5); };
+  const fmtDay = (t) => {
+    const d = new Date(t), today = new Date();
+    const y = new Date(); y.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Bugün';
+    if (d.toDateString() === y.toDateString()) return 'Dün';
+    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+  const tick = (st) => st === 'pending' ? '<span class="tick">🕓</span>'
+    : st === 'sent' ? '<span class="tick">✓</span>'
+    : st === 'read' ? '<span class="tick read">✓✓</span>' : '<span class="tick">✓✓</span>';
+  function renderChat() {
+    const log = $('chatLog');
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    log.textContent = '';
+    let lastDay = '', lastWho = '';
+    if (!chat.length) {
+      const e = document.createElement('div'); e.className = 'chat-empty';
+      e.textContent = '🔒 Mesajlar doğrudan karşı tarafa gider, hiçbir sunucuda saklanmaz.';
+      log.appendChild(e);
     }
+    for (const m of chat) {
+      const day = fmtDay(m.t);
+      if (day !== lastDay) {
+        const d = document.createElement('div'); d.className = 'chat-day'; d.textContent = day; log.appendChild(d);
+        lastDay = day; lastWho = '';
+      }
+      const row = document.createElement('div');
+      row.className = `msg ${m.who}${m.who !== lastWho ? ' first' : ''}`;
+      const txt = document.createElement('span'); txt.className = 'txt'; txt.textContent = m.text;
+      const meta = document.createElement('span'); meta.className = 'meta';
+      meta.innerHTML = fmtTime(m.t) + (m.who === 'me' ? ' ' + tick(m.status) : '');
+      row.append(txt, meta);
+      log.appendChild(row);
+      lastWho = m.who;
+    }
+    if (atBottom || chatOpen()) log.scrollTop = log.scrollHeight;
+  }
+  function setPeerStatus(text) { $('chatPeerStatus').textContent = text; }
+  function refreshPeerStatus() { setPeerStatus(conn && conn.open ? 'çevrimiçi' : 'bağlı değil'); }
+  function sendChatMsg(m) { signal({ type: 'chat', id: m.id, text: m.text, t: m.t }); m.status = 'sent'; }
+  // Bağlantı (yeniden) açılınca bekleyen mesajları gönder
+  function chatOnConnect() {
+    refreshPeerStatus();
+    let changed = false;
+    for (const m of chat) if (m.who === 'me' && m.status === 'pending') { sendChatMsg(m); changed = true; }
+    if (changed) { saveChat(); renderChat(); }
+    if (chatOpen()) sendReadReceipts();
+  }
+  function sendReadReceipts() {
+    const ids = chat.filter((m) => m.who === 'them' && !m.readSent).map((m) => m.id);
+    if (!ids.length || !(conn && conn.open)) return;
+    signal({ type: 'chat-read', ids });
+    for (const m of chat) if (ids.includes(m.id)) m.readSent = true;
+    saveChat();
+  }
+  function onChatMessage(msg) {
+    const text = String(msg.text || '').slice(0, 1000);
+    if (!text) return;
+    if (!chat.some((m) => m.id === msg.id)) {
+      chat.push({ id: msg.id || newId(), text, who: 'them', t: Number(msg.t) || Date.now() });
+      if (!chatOpen()) { unread++; $('chatBadge').textContent = unread; $('chatBadge').classList.remove('hidden'); }
+      saveChat(); renderChat();
+    }
+    signal({ type: 'chat-ack', id: msg.id });
+    if (chatOpen()) sendReadReceipts();
+    clearTimeout(typingTimer); refreshPeerStatus();
+  }
+  function onChatAck(ids, status) {
+    let changed = false;
+    for (const m of chat) {
+      if (m.who === 'me' && ids.includes(m.id) && m.status !== 'read' && !(status === 'delivered' && m.status === 'read')) { m.status = status; changed = true; }
+    }
+    if (changed) { saveChat(); renderChat(); }
   }
   $('chatBtn').onclick = () => {
     $('chat').classList.toggle('hidden');
-    if (!$('chat').classList.contains('hidden')) { unread = 0; $('chatBadge').classList.add('hidden'); $('chatInput').focus(); }
+    if (chatOpen()) {
+      unread = 0; $('chatBadge').classList.add('hidden');
+      refreshPeerStatus(); renderChat(); sendReadReceipts();
+      $('chatLog').scrollTop = $('chatLog').scrollHeight;
+      $('chatInput').focus();
+    }
   };
   $('chatClose').onclick = () => $('chat').classList.add('hidden');
+  $('chatInput').addEventListener('input', () => {
+    $('chatSend').classList.toggle('ready', !!$('chatInput').value.trim());
+    if (Date.now() - lastTypingSent > 2500 && $('chatInput').value) { lastTypingSent = Date.now(); signal({ type: 'typing' }); }
+  });
   $('chatForm').onsubmit = (e) => {
     e.preventDefault();
-    const text = $('chatInput').value.trim();
+    const text = $('chatInput').value.trim().slice(0, 1000);
     if (!text) return;
-    if (!(conn && conn.open)) { addChat('Mesaj gönderilemedi: karşı taraf bağlı değil', 'sys'); return; }
-    signal({ type: 'chat', text: text.slice(0, 1000) });
-    addChat(text, 'me');
-    $('chatInput').value = '';
+    const m = { id: newId(), text, who: 'me', t: Date.now(), status: 'pending' };
+    if (conn && conn.open) sendChatMsg(m);
+    chat.push(m);
+    saveChat(); renderChat();
+    $('chatInput').value = ''; $('chatSend').classList.remove('ready');
+    $('chatLog').scrollTop = $('chatLog').scrollHeight;
+    $('chatInput').focus();
   };
   $('profile').onchange = (e) => {
     profile = e.target.value;
@@ -597,13 +765,24 @@
   };
   $('hangBtn').onclick = () => {
     leaving = true;
+    clearSess();
     signal({ type: 'bye' });
     resetPc();
     if (peer) peer.destroy();
     localStream.getTracks().forEach((t) => t.stop());
     location.href = location.pathname;
   };
-  window.addEventListener('pagehide', () => { if (!leaving) signal({ type: 'bye' }); });
+  window.addEventListener('pagehide', (e) => {
+    if (leaving || e.persisted) return; // persisted: sayfa önbellekte duruyor (uygulama değişimi), görüşmeyi kesme
+    signal({ type: 'bye' });
+    try { if (peer) peer.destroy(); } catch {}
+  });
+  // Uygulamaya geri dönülünce bağlantı ölmüşse toparla
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || leaving || !room) return;
+    if (peer && (peer.disconnected || peer.destroyed)) recover('uygulamaya dönüldü');
+    else if (pc && ['failed', 'disconnected'].includes(pc.connectionState)) recover('uygulamaya dönüldü');
+  });
   // iOS: otomatik oynatma engellenirse ilk dokunuşta başlat
   document.addEventListener('click', () => { if (remoteVideo.paused && remoteVideo.srcObject) remoteVideo.play().catch(() => {}); });
 
