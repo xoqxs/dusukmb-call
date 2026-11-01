@@ -319,7 +319,13 @@
     });
     if (!pair) return;
     const now = Date.now();
-    const tx = pair.bytesSent || 0, rx = pair.bytesReceived || 0;
+    // Bazı tarayıcılar bağlantı sayacını güncellemiyor; medya sayaçlarıyla da hesapla, büyük olanı al
+    let txR = 0, rxR = 0;
+    report.forEach((s) => {
+      if (s.type === 'outbound-rtp') txR += (s.bytesSent || 0) + (s.headerBytesSent || 0);
+      if (s.type === 'inbound-rtp') rxR += (s.bytesReceived || 0) + (s.headerBytesReceived || 0);
+    });
+    const tx = Math.max(pair.bytesSent || 0, txR), rx = Math.max(pair.bytesReceived || 0, rxR);
     if (prevStats) {
       const dt = now - prevStats.t;
       $('sOut').textContent = kbps(tx - prevStats.tx, dt);
