@@ -10,6 +10,9 @@
 // Her oda kendi Durable Object'inde çalışır (kimlik "...-a"/"...-b" son ekinden oda bulunur),
 // böylece iki taraf her zaman aynı nesnede buluşur.
 
+import { handlePhone, UserBox, VapidKeys } from './phone.js';
+export { UserBox, VapidKeys };
+
 const HEARTBEAT = '{"type":"HEARTBEAT"}';
 const STALE_MS = 20000; // bu kadar süre ses gelmeyen eski bağlantı "ölü" sayılır
 
@@ -66,6 +69,9 @@ export default {
       if (!/^[a-z0-9_-]{2,40}$/.test(code)) return new Response('geçersiz topluluk kodu', { status: 400 });
       return env.COMMUNITY.get(env.COMMUNITY.idFromName(code)).fetch(request);
     }
+
+    // Kullanıcı adıyla arama
+    if (url.pathname.startsWith('/phone/')) return handlePhone(request, env, url);
 
     // Site dosyası değilse
     if (env.ASSETS) {

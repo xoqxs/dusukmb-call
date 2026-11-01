@@ -10,19 +10,44 @@
   <link rel="icon" href="icon.svg">
   <link rel="apple-touch-icon" href="icon.svg">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <main id="lobby" class="screen">
     <div class="brand"><img src="icon.svg" alt="" width="44" height="44"><h1>DusukMB Call</h1></div>
-    <p class="sub">Zayıf internette görüntülü görüşme.<br>Saatte yaklaşık 45 MB.</p>
+    <p class="sub">Zayıf internette görüntülü görüşme · saatte ~45 MB</p>
+    <!-- Kullanıcı adıyla arama -->
+    <section id="me" class="card">
+      <div id="meOff">
+        <label for="myName">Kullanıcı adın</label>
+        <div class="code-row">
+          <input id="myName" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="örn: kadir" maxlength="20" enterkeyhint="go">
+          <button id="goOnline">Çevrimiçi ol</button>
+        </div>
+        <p class="hint">Çevrimiçi olunca seni bu adla arayabilirler; sayfa arkada açık kalsın, arayan olunca telefon çalar.</p>
+      </div>
+      <div id="meOn" class="hidden">
+        <div class="me-row"><span class="dot on"></span><b id="meName">-</b><span id="meState" class="me-state">çevrimiçi</span><button id="goOffline" class="mini">Kapat</button></div>
+        <p id="meHint" class="hint"></p>
+        <button id="meNotify" class="mini wide hidden">🔔 Bildirimleri aç (arkadayken çalsın)</button>
+      </div>
+    </section>
+    <section class="card">
+      <label for="callName">Birini ara</label>
+      <div class="code-row">
+        <input id="callName" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="kullanıcı adı" maxlength="20" enterkeyhint="go">
+        <button id="callBtn" class="green">📞 Ara</button>
+      </div>
+      <div id="contacts" class="contacts"></div>
+    </section>
+    <div class="or"><span>ya da linkle</span></div>
     <button id="startBtn" class="big">📹 Görüşme başlat</button>
     <button id="codeToggle" class="ghost">Kodla katıl</button>
     <div id="codeRow" class="code-row hidden">
       <input id="room" autocomplete="off" autocapitalize="off" placeholder="Oda kodu" enterkeyhint="go">
       <button id="joinBtn">Katıl</button>
     </div>
-    <p id="lobbyMsg" class="hint">Başlat'a bas, gelen linki karşı tarafa gönder. Link açılınca görüşme kendiliğinden başlar.</p>
+    <p id="lobbyMsg" class="hint"></p>
     <p id="lobbyErr" class="error"></p>
   </main>
 
@@ -81,6 +106,8 @@
           <button data-p="cokdusuk"><b>Tasarruf</b><small>~28 MB/sa · fotoğraf</small></button>
           <button data-p="normal"><b>Normal</b><small>~45 MB/sa</small></button>
           <button data-p="iyi"><b>Net</b><small>~85 MB/sa</small></button>
+          <button data-p="hd"><b>720p</b><small>~800 MB/sa</small></button>
+          <button data-p="fhd"><b>1080p</b><small>~2 GB/sa · Wi-Fi</small></button>
         </div>
         <label class="switch"><input id="autoQ" type="checkbox" checked> Bağlantı zayıflayınca otomatik düşür</label>
         <div class="sheet-row">
@@ -100,6 +127,7 @@
           <option value="normal" selected>Normal (~45 MB/sa)</option>
           <option value="iyi">Net (~85 MB/sa)</option>
           <option value="hd">HD 720p (~800 MB/sa)</option>
+          <option value="fhd">Full HD 1080p (~2 GB/sa)</option>
           <option value="ses">Sadece ses (~15 MB/sa)</option>
           <option value="ozel">Özel ayar</option>
         </select>
@@ -133,10 +161,22 @@
     </section>
   </main>
 
+  <!-- Gelen arama -->
+  <section id="incoming" class="incoming hidden">
+    <div class="in-box">
+      <div class="in-avatar" id="inAvatar">?</div>
+      <b id="inName">-</b>
+      <span class="in-sub">görüntülü arıyor…</span>
+      <div class="in-btns">
+        <button id="inNo" class="in-no" title="Reddet">✕</button>
+        <button id="inYes" class="in-yes" title="Aç">📞</button>
+      </div>
+    </div>
+  </section>
   <div id="toast" class="toast hidden"></div>
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

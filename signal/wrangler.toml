@@ -18,6 +18,14 @@ class_name = "SignalRoom"
 name = "COMMUNITY"
 class_name = "Community"
 
+[[durable_objects.bindings]]
+name = "USERS"
+class_name = "UserBox"
+
+[[durable_objects.bindings]]
+name = "KEYS"
+class_name = "VapidKeys"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SignalRoom"]
@@ -25,6 +33,10 @@ new_sqlite_classes = ["SignalRoom"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Community"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["UserBox", "VapidKeys"]
 
 # TURN için (Cloudflare panelinde TURN anahtarı oluşturulunca gizli değişken olarak eklenir):
 #   TURN_KEY_ID, TURN_KEY_API_TOKEN
