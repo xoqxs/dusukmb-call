@@ -18,13 +18,18 @@
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   const $ = (id) => document.getElementById(id);
+  const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
   const lobby = $('lobby'), call = $('call');
   const localVideo = $('localVideo'), remoteVideo = $('remoteVideo'), remoteCanvas = $('remoteCanvas');
   const statusEl = $('status');
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
-  let remoteHidden = false, remoteSendsVideo = true, sentMode = null, peerPresent = false, userProfile = 'normal', autoDown = false;
+  let camOn = false;
+  const CAM = { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } };
+  let remoteHidden = false, remoteSendsVideo = false, sentMode = null, peerPresent = false, userProfile = 'normal', autoDown = false;
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null, frozenSince = 0, lastFrames = -1;
   function resetHourly() { hourBase = null; if ($('sHour')) $('sHour').textContent = 'ölçülüyor…'; }
   window.__dusukmb = { get pc() { return pc; }, get conn() { return conn; }, get peer() { return peer; }, get enhancer() { return enhancer; } }; // hata ayıklama için
@@ -57,23 +62,22 @@
     if (!r) { $('room').focus(); return; }
     room = r;
     history.replaceState(null, '', `?oda=${encodeURIComponent(room)}`);
+    // Görüşme sesle başlar; kamera kullanıcı isteyince açılır (ayarlardan "kamerayla başlasın" seçilebilir)
+    const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+    const wantCam = lsGet('dusukmb-camstart', false);
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-        // 480×360 aç, profil küçültmeyi kodlayıcıda yapsın (scaleResolutionDownBy)
-        video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } },
-      });
+      localStream = await navigator.mediaDevices.getUserMedia(wantCam ? { audio: AUDIO, video: CAM } : { audio: AUDIO });
+      camOn = wantCam;
     } catch (e) {
-      // Kamera yoksa/izin yoksa sadece sesle dene
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-        profile = userProfile = 'ses'; $('profile').value = 'ses'; syncCustomUi();
-      } catch (e2) {
-        alertInline('Kamera/mikrofon izni gerekli. Adres çubuğundaki kilit simgesinden izin verip sayfayı yenile. (' + e2.message + ')');
+      try { localStream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); camOn = false; }
+      catch (e2) {
+        room = null;
+        alertInline('Mikrofon izni gerekli. Adres çubuğundaki kilit simgesinden izin verip sayfayı yenile. (' + e2.message + ')');
         $('lobbyMsg').textContent = '';
         return;
       }
     }
+    syncCamUi();
     localStream.getTracks().forEach(watchTrack);
     localVideo.srcObject = localStream;
     loadChat();
@@ -272,7 +276,12 @@
         showTyping(true);
         break;
       case 'mode':
-        remoteSendsVideo = !!msg.video; frozenSince = 0;
+        if (msg.video && !remoteSendsVideo && peerPresent && !camOn) {
+          // Karşı taraf kamerasını açtı: zorlamadan öner
+          $('camSuggest').classList.remove('hidden');
+          clearTimeout(window.__camSugT); window.__camSugT = setTimeout(() => $('camSuggest').classList.add('hidden'), 10000);
+        }
+        remoteSendsVideo = !!msg.video; frozenSince = 0; syncVoiceView();
         break;
       case 'vis':
         // Karşı taraf uygulamadan çıktı/döndü: görmediği görüntüyü boşuna gönderme
@@ -305,7 +314,12 @@
       pc.addTrack(track, localStream);
     }
     for (const tr of pc.getTransceivers()) {
-      if (tr.receiver.track && tr.receiver.track.kind === 'video') preferCodecs(tr);
+      if (tr.receiver.track && tr.receiver.track.kind === 'video') {
+        preferCodecs(tr);
+        // Kamera kapalı olsa da görüntü yolu açık kalsın: sonradan kamera açılınca yeniden anlaşma gerekmez
+        tr.direction = 'sendrecv';
+        try { tr.sender.setStreams && tr.sender.setStreams(localStream); } catch {}
+      }
     }
   }
 
@@ -313,10 +327,11 @@
     if (pc) return pc;
     pc = new RTCPeerConnection(iceConfig);
     if (addTracks) {
-      for (const track of localStream.getTracks()) {
-        const tr = pc.addTransceiver(track, { direction: 'sendrecv', streams: [localStream] });
-        if (track.kind === 'video') preferCodecs(tr);
-      }
+      const at = localStream.getAudioTracks()[0], vt0 = localStream.getVideoTracks()[0];
+      if (at) pc.addTransceiver(at, { direction: 'sendrecv', streams: [localStream] });
+      else pc.addTransceiver('audio', { direction: 'sendrecv', streams: [localStream] });
+      // Görüntü yolu kamera kapalıyken de açılır (sonradan açınca anında başlar)
+      preferCodecs(pc.addTransceiver(vt0 || 'video', { direction: 'sendrecv', streams: [localStream] }));
     }
     pc.onicecandidate = (e) => { if (e.candidate) signal({ type: 'ice', candidate: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {
@@ -361,7 +376,7 @@
   function resetPc() {
     if (pc) { pc.close(); pc = null; }
     carried += lastTotal; lastTotal = 0; snapTx = 0; snapRx = 0; prevLoss = null;
-    pendingIce = []; sentMode = null; remoteSendsVideo = true; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
+    pendingIce = []; sentMode = null; remoteSendsVideo = false; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
     if (enhancer) enhancer.stop();
     stopStats();
   }
@@ -404,7 +419,7 @@
     const p = PROFILES[profile];
     resetHourly();
     const snap = !p.audioOnly && (p.snap || p.vbr < 30000);
-    const noVideo = p.audioOnly || remoteHidden; // karşı taraf görmüyorsa görüntü gönderme
+    const noVideo = p.audioOnly || remoteHidden || !camOn; // kamera kapalı / karşı taraf görmüyorsa görüntü gönderme
     const vt = localStream && localStream.getVideoTracks()[0];
     if (vt && !p.audioOnly) {
       // Kamerayı en az 480×360 aç (HD için 1280×720); küçültmeyi kodlayıcı yapar
@@ -614,10 +629,55 @@
     const t = localStream.getAudioTracks()[0]; t.enabled = !t.enabled;
     e.currentTarget.classList.toggle('off', !t.enabled);
   };
-  $('camBtn').onclick = (e) => {
-    const t = localStream.getVideoTracks()[0]; t.enabled = !t.enabled;
-    e.currentTarget.classList.toggle('off', !t.enabled);
-  };
+  // ---------- Kamera aç/kapat ----------
+  // Kapatınca kamera tamamen durur (ışık söner, pil ve veri harcanmaz); açınca yeniden başlatılır.
+  async function setCam(on) {
+    if (on === camOn) return;
+    if (on) {
+      let vt = localStream.getVideoTracks()[0];
+      if (!vt || vt.readyState === 'ended') {
+        try {
+          const ns = await navigator.mediaDevices.getUserMedia({ video: CAM });
+          vt = ns.getVideoTracks()[0];
+          if (localStream.getVideoTracks()[0]) localStream.removeTrack(localStream.getVideoTracks()[0]);
+          localStream.addTrack(vt); watchTrack(vt);
+        } catch (e) { toast('Kamera açılamadı: izin ver ya da başka uygulama kullanıyor olabilir', 4000); return; }
+      }
+      vt.enabled = true;
+      camOn = true;
+      if (PROFILES[profile].audioOnly) { profile = userProfile = 'normal'; $('profile').value = profile; syncCustomUi(); syncQuick(); signal({ type: 'profile', value: profile }); }
+      localVideo.srcObject = localStream; localVideo.play().catch(() => {});
+    } else {
+      camOn = false;
+    }
+    syncCamUi();
+    await applyProfile();
+    if (!on) {
+      for (const t of localStream.getVideoTracks()) { t._byUser = true; localStream.removeTrack(t); t.stop(); }
+    }
+  }
+  function syncCamUi() {
+    $('camBtn').classList.toggle('off', !camOn);
+    $('camBtn').title = camOn ? 'Kamerayı kapat' : 'Kamerayı aç';
+    localVideo.classList.toggle('hidden', !camOn);
+    $('camCta').classList.toggle('hidden', camOn);
+    if (camOn) $('camSuggest').classList.add('hidden');
+    syncVoiceView();
+  }
+  // Karşıdan görüntü gelmiyorsa siyah ekran yerine "sesli görüşme" ekranı
+  function syncVoiceView() {
+    const show = !!pc && peerPresent && !remoteSendsVideo && Date.now() - lastSnapAt > 5000;
+    $('voiceView').classList.toggle('hidden', !show);
+    // Büyük "Kamerayı aç" düğmesi karşı tarafın görüntüsünü kapatmasın: sadece görüntü yokken
+    $('camCta').classList.toggle('hidden', camOn || (peerPresent && !show));
+    $('voiceSub').textContent = camOn ? 'Karşı tarafın kamerası kapalı' : 'Kameralar kapalı · veri tasarrufu';
+  }
+  setInterval(syncVoiceView, 1500);
+  $('camBtn').onclick = () => setCam(!camOn);
+  $('camCta').onclick = () => setCam(true);
+  $('camSuggest').onclick = () => setCam(true);
+  $('camStart').checked = lsGet('dusukmb-camstart', false);
+  $('camStart').onchange = (e) => lsSet('dusukmb-camstart', e.target.checked);
   $('enhanceBtn').onclick = (e) => {
     if (!enhancer || !enhancer.supported) { setStatus('Bu cihazda netleştirme desteklenmiyor'); return; }
     enhancer.setEnabled(!enhancer.enabled);
@@ -732,7 +792,7 @@
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
   }
   // Kamera/mikrofon başka uygulama yüzünden ya da arka planda kapanırsa yeniden aç
-  function watchTrack(t) { t.addEventListener('ended', () => { if (!leaving) reacquire(t.kind); }); }
+  function watchTrack(t) { t.addEventListener('ended', () => { if (!leaving && !t._byUser && (t.kind === 'audio' || camOn)) reacquire(t.kind); }); }
   let reacquiring = {};
   async function reacquire(kind) {
     if (reacquiring[kind] || leaving || !localStream) return;
@@ -1021,8 +1081,6 @@
   // Bildirim izni verildiyse tarayıcı kapalı/uyuyorken bile (Web Push) telefon uyandırılır.
   const NAME_RE = /^[a-z0-9_.-]{3,20}$/;
   const ME_KEY = 'dusukmb-me', ONLINE_KEY = 'dusukmb-online', CONTACTS_KEY = 'dusukmb-contacts';
-  const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   let me = lsGet(ME_KEY, null), phoneWs = null, phoneRetry = 0, phoneTimer = null, phonePing = null, inRing = null;
   let apiBase = '', wsBase = '';
   const apiReady = cfgP.then((cfg) => {
