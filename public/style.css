@@ -183,3 +183,9 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
   border-radius: 999px; border: 1px solid #2a4a86; background: rgba(17,26,46,0.95); color: #e6edf7; font-size: 14px; cursor: pointer; white-space: nowrap; animation: up 0.2s ease-out; }
 .cam-suggest b { color: #8ec5ff; }
 #lobby button.share-app { margin-top: 6px; color: #9fc2ff; }
+
+.ear-btn { margin-top: 26px; padding: 12px 20px; border-radius: 999px; border: 1px solid #2a3b5e; background: rgba(17,26,46,0.8); color: #c3d2ea; font-size: 15px; cursor: pointer; }
+.ear-mode { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; align-items: flex-end; justify-content: center; touch-action: none; user-select: none; }
+.ear-mode span { margin-bottom: 40px; color: #222; font-size: 13px; }
+.tap-audio { position: absolute; z-index: 7; left: 50%; top: 30%; transform: translateX(-50%); padding: 14px 22px; border-radius: 999px; border: 0;
+  background: #ffc94d; color: #1a1300; font-size: 16px; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }

@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
   <main id="lobby" class="screen">
@@ -65,14 +65,17 @@
       <canvas id="remoteCanvas"></canvas>
       <video id="remoteVideo" playsinline autoplay></video>
       <img id="remoteSnap" class="hidden" alt="">
+      <audio id="remoteAudio" autoplay></audio>
       <video id="localVideo" playsinline autoplay muted></video>
       <!-- Kameralar kapalıyken: sesli görüşme ekranı -->
       <div id="voiceView" class="voice-view hidden">
         <div class="voice-ring">🔈</div>
         <b>Sesli görüşme</b>
         <span id="voiceSub">Kameralar kapalı · veri tasarrufu</span>
+        <button id="earBtn" class="ear-btn">🌑 Kulağa götür (ekranı karart)</button>
       </div>
       <button id="camCta" class="cam-cta">📷 Kamerayı aç</button>
+      <button id="tapAudio" class="tap-audio hidden">🔊 Sesi açmak için dokun</button>
       <button id="camSuggest" class="cam-suggest hidden">Karşı taraf kamerasını açtı · <b>📷 Sen de aç</b></button>
       <div id="topBar" class="top-bar hidden">
         <span id="qBars" class="qbars" title="Bağlantı kalitesi"><i></i><i></i><i></i></span>
@@ -179,6 +182,8 @@
     </div>
   </section>
 
+  <!-- Kulak modu: siyah ekran, dokunuşlar yok sayılır, iki kez dokununca açılır -->
+  <div id="earMode" class="ear-mode hidden"><span>Görüşme sürüyor · açmak için iki kez dokun</span></div>
   <!-- Gelen arama -->
   <section id="incoming" class="incoming hidden">
     <div class="in-box">
@@ -204,6 +209,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
