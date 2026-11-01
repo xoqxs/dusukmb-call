@@ -653,7 +653,17 @@
   // Tarayıcıda ses çıkışı doğrudan seçilemiyor. Android Chrome mikrofon listesinde "Headset earpiece" ve
   // "Speakerphone" girişlerini gösterir; hangisi seçilirse ses de oradan çıkar. Sesli görüşme ahizeden,
   // kamera açılınca hoparlörden başlar (WhatsApp gibi); düğmeyle elle değiştirilebilir.
-  let routes = null, speakerOn = false, speakerManual = false;
+  let routes = null, speakerOn = false, speakerManual = false, routeInfo = '';
+  // Gelişmiş: telefonun gösterdiği ses aygıtları (sorun olursa ekran görüntüsüyle gönderilsin)
+  async function showDevices() {
+    try {
+      const d = await navigator.mediaDevices.enumerateDevices();
+      const ins = d.filter((x) => x.kind === 'audioinput').map((x) => x.label || '(adsız)');
+      const outs = d.filter((x) => x.kind === 'audiooutput').map((x) => x.label || '(adsız)');
+      const cur = localStream && localStream.getAudioTracks()[0];
+      $('sDev').textContent = `giriş: ${ins.join(', ') || '-'} · çıkış: ${outs.join(', ') || 'yok'} · şu an: ${cur ? cur.label : '-'} · ${speakerOn ? 'hoparlör' : 'ahize'}${routeInfo ? ' · ' + routeInfo : ''} · setSinkId: ${remoteAudio.setSinkId ? 'var' : 'yok'}`;
+    } catch (e) { $('sDev').textContent = 'okunamadı: ' + e.name; }
+  }
   async function findRoutes() {
     if (routes) return routes;
     try {
@@ -663,7 +673,7 @@
       const outs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput');
       routes = { ear: ear && ear.deviceId, spk: spk && spk.deviceId, sink: !!remoteAudio.setSinkId && outs.length > 1 ? outs : null };
     } catch { routes = {}; }
-    $('spkBtn').classList.toggle('hidden', !(routes.ear && routes.spk) && !routes.sink);
+    $('spkBtn').classList.toggle('hidden', !(routes.ear && routes.spk) && !routes.sink && !/Android/i.test(navigator.userAgent));
     return routes;
   }
   function micConstraints() {
@@ -683,17 +693,33 @@
       const want = on ? r.spk : r.ear;
       if (old && old.getSettings().deviceId === want) return;
       try {
+        // Eski mikrofonu önce kapat: bazı telefonlarda iki mikrofon aynı anda açıkken yol değişmiyor
+        if (old) { old._byUser = true; localStream.removeTrack(old); old.stop(); }
         const ns = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
         const nt = ns.getAudioTracks()[0];
         nt.enabled = old ? old.enabled : true;
-        if (old) { old._byUser = true; localStream.removeTrack(old); }
         localStream.addTrack(nt); watchTrack(nt);
         if (pc) for (const tr of pc.getTransceivers()) if (tr.receiver.track && tr.receiver.track.kind === 'audio') { try { await tr.sender.replaceTrack(nt); } catch {} }
-        if (old) old.stop();
-      } catch (e) { console.warn('ses yolu', e); }
+        // Çalmayı yeniden başlat ki yeni ses yolu hemen uygulansın
+        const rs = remoteAudio.srcObject; if (rs) { remoteAudio.srcObject = null; remoteAudio.srcObject = rs; playAudio(); }
+        routeInfo = nt.label;
+      } catch (e) {
+        console.warn('ses yolu', e);
+        routeInfo = 'hata: ' + e.name;
+        // Seçilemediyse varsayılan mikrofona dön (sessiz kalmasın)
+        if (!localStream.getAudioTracks()[0]) {
+          try { const ns = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); const nt = ns.getAudioTracks()[0]; localStream.addTrack(nt); watchTrack(nt);
+            if (pc) for (const tr of pc.getTransceivers()) if (tr.receiver.track && tr.receiver.track.kind === 'audio') { try { await tr.sender.replaceTrack(nt); } catch {} } } catch {}
+        }
+        if (manual) toast('Bu telefonda ' + (on ? 'hoparlöre' : 'ahizeye') + ' geçilemedi. ⚙️ → Gelişmiş\'teki "Ses aygıtları" satırını bana gönder', 6000);
+        speakerOn = !on; $('spkBtn').classList.toggle('on', !on); $('spkBtn').textContent = !on ? '🔊' : '📞';
+        return;
+      }
     } else if (r.sink) {
       const d = r.sink.find((x) => on ? /speaker|hoparl/i.test(x.label) : /earpiece|receiver|ahize/i.test(x.label));
-      if (d) { try { await remoteAudio.setSinkId(d.deviceId); } catch {} }
+      if (d) { try { await remoteAudio.setSinkId(d.deviceId); routeInfo = d.label; } catch (e) { routeInfo = 'hata: ' + e.name; } }
+    } else if (manual) {
+      toast('Bu telefonda tarayıcı hoparlör/ahize seçtirmiyor. ⚙️ → Gelişmiş\'teki "Ses aygıtları" satırını bana gönder', 6000);
     }
     if (manual) toast(on ? '🔊 Hoparlör' : '📞 Ahize (telefonu kulağına götür)');
   }
@@ -807,7 +833,7 @@
     enhancer.setEnabled(!enhancer.enabled);
     e.currentTarget.classList.toggle('on', enhancer.enabled);
   };
-  $('statsBtn').onclick = () => { closeSheets(); $('stats').classList.remove('hidden'); };
+  $('statsBtn').onclick = () => { closeSheets(); $('stats').classList.remove('hidden'); showDevices(); };
   $('statsClose').onclick = () => $('stats').classList.add('hidden');
 
   // ---------- Alt sayfalar: ayarlar ve davet ----------
