@@ -1,4 +1,5 @@
 name: Siteyi yayınla
+# public/ klasöründeki dosyaları GitHub Pages'e yayınlar
 on:
   push:
     branches: [main]
