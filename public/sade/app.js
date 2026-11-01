@@ -703,24 +703,41 @@
   });
 
   function inviteUrl() { return `${location.origin}${location.pathname}?oda=${encodeURIComponent(room)}`; }
-  function openInvite() {
-    const url = inviteUrl();
+  let shareUrl = '', shareText = '';
+  function openShare({ title, sub, url, text, notify }) {
+    shareUrl = url; shareText = text;
+    $('shareTitle').textContent = title; $('shareSub').textContent = sub;
     $('inviteLink').textContent = url;
     if (window.qrcode) {
       const q = window.qrcode(0, 'M'); q.addData(url); q.make();
       $('qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
     }
-    $('waBtn').href = 'https://wa.me/?text=' + encodeURIComponent('Görüntülü görüşmeye katıl: ' + url);
+    $('waBtn').href = 'https://wa.me/?text=' + encodeURIComponent(text + ' ' + url);
     $('nativeShare').classList.toggle('hidden', !navigator.share);
     syncNotifyUi();
+    $('notifyAsk').classList.toggle('hidden', !notify || notifyState() !== 'default');
     closeSheets();
     $('inviteSheet').classList.remove('hidden');
   }
+  function openInvite() {
+    openShare({ title: 'Davet et', sub: 'Karşı taraf linki açınca görüşme kendiliğinden başlar.', url: inviteUrl(), text: 'Görüntülü görüşmeye katıl:', notify: true });
+  }
+  // Uygulamayı birine öner (ana sayfadan): çevrimiçiysen kullanıcı adın da gider, link açılınca adın arama kutusunda hazır olur
+  function appShareUrl() {
+    const base = location.origin + location.pathname;
+    return me && me.name ? `${base}?ara=${encodeURIComponent(me.name)}` : base;
+  }
+  $('recommendBtn').onclick = () => {
+    const text = me && me.name
+      ? `DusukMB Call: zayıf internette bile görüntülü görüşme, saatte ~15-45 MB. Beni @${me.name} adıyla arayabilirsin:`
+      : 'DusukMB Call: zayıf internette bile görüntülü görüşme, saatte ~15-45 MB. Kurulum yok, linke dokun:';
+    openShare({ title: 'Arkadaşına öner', sub: me && me.name ? `Link açılınca @${me.name} arama kutusunda hazır gelir.` : 'Linki açan telefonda uygulama hemen açılır.', url: appShareUrl(), text });
+  };
   $('copyBtn').onclick = async () => {
-    try { await navigator.clipboard.writeText(inviteUrl()); toast('Link kopyalandı ✓'); }
+    try { await navigator.clipboard.writeText(shareUrl); toast('Link kopyalandı ✓'); }
     catch { const r = document.createRange(); r.selectNodeContents($('inviteLink')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Linki seçip kopyala'); }
   };
-  $('nativeShare').onclick = async () => { try { await navigator.share({ title: 'DusukMB Call', text: 'Görüntülü görüşmeye katıl', url: inviteUrl() }); } catch {} };
+  $('nativeShare').onclick = async () => { try { await navigator.share({ title: 'DusukMB Call', text: shareText, url: shareUrl }); } catch {} };
 
   // ---------- Bildirim, titreşim, zil ----------
   // Sayfa arka plandayken (tarayıcı açık) karşı taraf katılınca/ayrılınca ya da mesaj gelince haber verir.
@@ -1364,6 +1381,13 @@
   renderMe(); refreshContacts(); shareMeWithSw();
   apiReady.then(() => { shareMeWithSw(); if (me && lsGet(ONLINE_KEY, false)) { connectPhone(); subscribePush(); } });
 
+  // Önerilen linkle gelindiyse: arama kutusuna adı yaz
+  if (params.get('ara') && NAME_RE.test(params.get('ara').toLowerCase())) {
+    const n = params.get('ara').toLowerCase();
+    $('callName').value = n; addContact(n); refreshContacts();
+    $('lobbyMsg').textContent = `@${n} seni davet etti. Aramak için 📞 Ara'ya bas. Seni de arayabilmesi için kendi adınla çevrimiçi ol.`;
+    history.replaceState(null, '', location.pathname);
+  }
   // Bildirimden "Aç" ile gelindiyse (sayfa kapalıydı): aramayı kabul et ve görüşmeye gir
   if (params.get('cevap') && params.get('oda')) {
     const r = { id: params.get('cevap'), room: params.get('oda').trim().toLowerCase(), from: params.get('kimden') || '' };

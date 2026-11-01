@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <main id="lobby" class="screen">
@@ -56,6 +56,7 @@
       <button id="joinBtn">Katıl</button>
     </div>
     <p id="lobbyMsg" class="hint"></p>
+    <button id="recommendBtn" class="ghost share-app">📤 Uygulamayı arkadaşına öner</button>
     <p id="lobbyErr" class="error"></p>
   </main>
 
@@ -96,22 +97,6 @@
       <button id="shareBtn" title="Davet et">🔗</button>
       <button id="hangBtn" class="danger" title="Kapat">✕</button>
     </div>
-
-    <!-- Davet: QR + WhatsApp + kopyala -->
-    <section id="inviteSheet" class="sheet hidden">
-      <div class="sheet-box">
-        <div class="sheet-head"><b>Davet et</b><button class="sheet-x" data-close="inviteSheet" title="Kapat">✕</button></div>
-        <p class="sheet-sub">Karşı taraf linki açınca görüşme kendiliğinden başlar.</p>
-        <div id="qr" class="qr"></div>
-        <div id="inviteLink" class="invite-link">-</div>
-        <div class="sheet-row">
-          <a id="waBtn" class="btn wa" target="_blank" rel="noopener">WhatsApp</a>
-          <button id="copyBtn" class="btn">Kopyala</button>
-          <button id="nativeShare" class="btn hidden">Paylaş…</button>
-        </div>
-        <button id="notifyAsk" class="btn ghost-btn hidden">🔔 Katılınca bana haber ver</button>
-      </div>
-    </section>
 
     <!-- Ayarlar: 4 basit seçenek, gerisi Gelişmiş'te -->
     <section id="setSheet" class="sheet hidden">
@@ -178,6 +163,22 @@
     </section>
   </main>
 
+  <!-- Davet: QR + WhatsApp + kopyala -->
+  <section id="inviteSheet" class="sheet hidden">
+    <div class="sheet-box">
+      <div class="sheet-head"><b id="shareTitle">Davet et</b><button class="sheet-x" data-close="inviteSheet" title="Kapat">✕</button></div>
+      <p id="shareSub" class="sheet-sub">Karşı taraf linki açınca görüşme kendiliğinden başlar.</p>
+      <div id="qr" class="qr"></div>
+      <div id="inviteLink" class="invite-link">-</div>
+      <div class="sheet-row">
+        <a id="waBtn" class="btn wa" target="_blank" rel="noopener">WhatsApp</a>
+        <button id="copyBtn" class="btn">Kopyala</button>
+        <button id="nativeShare" class="btn hidden">Paylaş…</button>
+      </div>
+      <button id="notifyAsk" class="btn ghost-btn hidden">🔔 Katılınca bana haber ver</button>
+    </div>
+  </section>
+
   <!-- Gelen arama -->
   <section id="incoming" class="incoming hidden">
     <div class="in-box">
@@ -203,6 +204,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
