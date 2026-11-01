@@ -29,7 +29,7 @@ function iceServers() {
 app.get('/config.json', (req, res) => {
   const secure = req.headers['x-forwarded-proto'] === 'https' || req.secure;
   res.set('Cache-Control', 'no-store').json({
-    signal: { host: req.hostname, port: Number(req.headers['x-forwarded-port']) || (secure ? 443 : PORT), secure, path: '/signal', key: 'peerjs' },
+    signal: { host: req.hostname, port: Number(req.headers['x-forwarded-port']) || (secure ? 443 : PORT), secure, path: '/signal/', key: 'peerjs' },
     iceServers: iceServers(),
   });
 });

@@ -16,7 +16,7 @@
   const localVideo = $('localVideo'), remoteVideo = $('remoteVideo'), remoteCanvas = $('remoteCanvas');
   const statusEl = $('status');
 
-  let ws, pc, localStream, room, iceConfig, profile = 'normal';
+  let pc, localStream, room, iceConfig, profile = 'normal';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false;
   window.__dusukmb = { get pc() { return pc; } }; // hata ayıklama için
@@ -63,9 +63,10 @@
     el.textContent = t;
   }
 
-  // ---------- Sinyal (PeerJS sunucu protokolü) ----------
-  // Odaya ilk giren "a", ikinci giren "b" kimliğini alır. Mesajlar sunucu üzerinden karşı tarafa aktarılır.
-  let signalCfg, myRole = null, myId = '', otherId = '', heartbeat = null;
+  // ---------- Sinyal (resmi PeerJS kütüphanesi) ----------
+  // Odaya ilk giren "a", ikinci giren "b" kimliğini alır. "b", "a"ya küçük bir veri kanalı açar;
+  // görüşme kurulum mesajları (offer/answer/ice) bu kanaldan gider. Görüntü/ses ayrı bağlantıdan akar.
+  let signalCfg, myRole = null, myId = '', otherId = '', peer = null, conn = null, retryTimer = null;
   function roomKey(r) {
     let h = 0x811c9dc5;
     for (const ch of r) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
@@ -74,49 +75,58 @@
   function connectSignal(role) {
     const base = roomKey(room);
     myRole = role; myId = `${base}-${role}`; otherId = `${base}-${role === 'a' ? 'b' : 'a'}`;
-    const c = signalCfg, token = Math.random().toString(36).slice(2);
-    const p = c.path.replace(/\/$/, '');
-    const sock = new WebSocket(`${c.secure ? 'wss' : 'ws'}://${c.host}:${c.port}${p}/peerjs?key=${c.key}&id=${myId}&token=${token}`);
-    ws = sock;
-    sock.onmessage = (ev) => {
-      let m; try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.type === 'OPEN') onSignalOpen();
-      else if (m.type === 'ID-TAKEN') {
-        sock.onclose = null; sock.close();
+    const c = signalCfg;
+    const p = new Peer(myId, { host: c.host, port: Number(c.port), secure: c.secure, path: c.path, key: c.key, config: iceConfig, debug: 0 });
+    peer = p;
+    p.on('open', () => {
+      if (myRole === 'a') { if (!pc) setStatus('Karşı taraf bekleniyor… Linki paylaş 🔗'); }
+      else { setStatus('Bağlanıyor…'); connectToA(); }
+    });
+    p.on('connection', (c2) => { if (c2.peer === otherId) attachConn(c2); else c2.close(); });
+    p.on('disconnected', () => { if (!leaving && !p.destroyed) { try { p.reconnect(); } catch {} } });
+    p.on('error', (e) => {
+      if (e.type === 'unavailable-id') {
+        p.destroy();
         if (role === 'a') connectSignal('b'); else onSignal({ type: 'full' });
-      } else if (m.type === 'OFFER' && m.payload && m.payload.dmb) onSignal(m.payload.dmb);
-      else if (m.type === 'ERROR') console.warn('sinyal hatası', m.payload);
-    };
-    sock.onclose = () => {
-      clearInterval(heartbeat);
-      if (!leaving) { setStatus('Sunucu bağlantısı koptu, tekrar deneniyor…'); setTimeout(() => connectSignal('a'), 2000); }
-    };
+      } else if (e.type === 'peer-unavailable') {
+        // "a" henüz/artık yok: biraz sonra tekrar dene
+        scheduleRetry();
+      } else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(e.type)) {
+        if (leaving) return;
+        setStatus('Sunucuya ulaşılamıyor, tekrar deneniyor…');
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => { try { p.destroy(); } catch {} connectSignal('a'); }, 3000);
+      } else console.warn('sinyal', e.type, e);
+    });
   }
-  function onSignalOpen() {
-    clearInterval(heartbeat);
-    heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'HEARTBEAT' })); }, 5000);
-    if (myRole === 'a') {
-      if (!pc) setStatus('Karşı taraf bekleniyor… Linki paylaş 🔗');
-      signal({ type: 'knock' }); // karşı taraf zaten odadaysa kendini tanıtsın
-    } else {
-      isOfferer = false; setStatus('Bağlanıyor…');
-      signal({ type: 'hello', ios: IS_IOS });
-    }
+  function scheduleRetry() {
+    clearTimeout(retryTimer);
+    if (!leaving && myRole === 'b') retryTimer = setTimeout(connectToA, 3000);
   }
-  function signal(msg) {
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'OFFER', dst: otherId, payload: { dmb: msg } }));
+  function connectToA() {
+    if (!peer || peer.destroyed || leaving) return;
+    if (conn && conn.open) return;
+    attachConn(peer.connect(otherId, { serialization: 'json', reliable: true }));
   }
+  function attachConn(c) {
+    if (conn && conn !== c) { try { conn.close(); } catch {} }
+    conn = c;
+    c.on('open', () => { if (myRole === 'b') { isOfferer = false; signal({ type: 'hello', ios: IS_IOS }); } });
+    c.on('data', (m) => { if (m && m.type) onSignal(m); });
+    c.on('close', () => {
+      if (conn !== c) return;
+      conn = null;
+      if (!leaving) { onSignal({ type: 'bye' }); scheduleRetry(); }
+    });
+    c.on('error', () => scheduleRetry());
+  }
+  function signal(msg) { if (conn && conn.open) conn.send(msg); }
 
   async function onSignal(msg) {
     switch (msg.type) {
       case 'full':
         setStatus('Bu oda dolu (en fazla 2 kişi).');
-        leaving = true; if (ws) ws.close();
-        break;
-      case 'knock':
-        // "a" yeniden bağlandı: baştan kur
-        resetPc(); isOfferer = false;
-        signal({ type: 'hello', ios: IS_IOS });
+        leaving = true; if (peer) peer.destroy();
         break;
       case 'hello':
         // İlk giren taraf ("a") teklifi oluşturur
@@ -199,7 +209,7 @@
         // Karşı taraf gitti ya da ağ koptu: baştan kurmayı dene, karşı taraf hâlâ oradaysa yanıt verir
         setStatus('Bağlantı koptu. Karşı taraf bekleniyor…');
         resetPc();
-        if (myRole === 'a') signal({ type: 'knock' }); else signal({ type: 'hello', ios: IS_IOS });
+        if (myRole === 'b') signal({ type: 'hello', ios: IS_IOS });
       }
     };
     return pc;
@@ -356,7 +366,7 @@
     leaving = true;
     signal({ type: 'bye' });
     resetPc();
-    if (ws) ws.close();
+    if (peer) peer.destroy();
     localStream.getTracks().forEach((t) => t.stop());
     location.href = location.pathname;
   };
