@@ -98,3 +98,31 @@ input:focus { border-color: #2f7cf6; }
 .ghost-btn { flex: 1; }
 label small { color: #6c80a0; }
 .icon.locked { background: #2f7cf6; }
+
+/* TeamSpeak tarzı oda ağacı */
+.tree { display: flex; flex-direction: column; padding: 10px 10px 4px; gap: 1px; }
+.tree-root { padding: 8px 10px; font-weight: 700; color: #c3d2ea; font-size: 15px; }
+.tree .ch { display: flex; align-items: center; gap: 8px; padding: 10px 10px; border-radius: 9px; cursor: pointer; user-select: none; }
+.tree .ch:hover { background: #142039; }
+.tree .ch.mine { background: #14305e; }
+.tree .ch.full .rn { color: #8da2c0; }
+.tree .ch .ic { width: 20px; text-align: center; }
+.tree .ch .rn { flex: 1; font-weight: 600; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree .ch .cnt { color: #8da2c0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.tree .ch .del { border: 0; background: none; color: #6c80a0; font-size: 14px; cursor: pointer; padding: 2px 4px; }
+.tree .user { position: relative; display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 46px; font-size: 14.5px; }
+.tree .user::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; border-left: 1px solid #2a3a5c; }
+.tree .user.last::before { bottom: 50%; }
+.tree .user::after { content: ''; position: absolute; left: 20px; top: 50%; width: 16px; border-top: 1px solid #2a3a5c; }
+.tree .user .dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11.5px; font-weight: 700; color: #0b1220; box-shadow: 0 0 0 2px transparent; transition: box-shadow 0.12s; }
+.tree .user.speaking .dot { box-shadow: 0 0 0 2px #3ddc84; }
+.tree .user .un { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree .user .fl { font-size: 12px; }
+#community-view .tree { padding-top: 6px; }
+
+/* Oda içinde yan panel */
+.tree-panel { position: absolute; inset: 0; z-index: 8; background: rgba(0,0,0,0.45); display: flex; justify-content: flex-end; }
+.tree-box { width: min(340px, 86vw); height: 100%; background: #0f1830; border-left: 1px solid #1a2640; overflow-y: auto; padding-top: env(safe-area-inset-top); animation: slidein 0.18s ease-out; }
+@keyframes slidein { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+.tree-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #1a2640; }
+.tree .user.person { background: none; border: 0; border-radius: 0; }

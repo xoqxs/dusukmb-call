@@ -170,37 +170,9 @@
     $('lockBtn').textContent = locked ? '🔒' : '🔓';
     $('lockBtn').classList.toggle('locked', locked);
     $('cOnline').textContent = `${state.online} kişi çevrimiçi${locked ? ' · parolalı' : ''}`;
-    const list = $('roomList');
-    list.textContent = '';
-    for (const r of state.rooms) {
-      const el = document.createElement('div');
-      el.className = 'room' + (r.name === myRoom ? ' mine' : '');
-      const head = document.createElement('div'); head.className = 'room-head';
-      const rn = document.createElement('span'); rn.className = 'rn'; rn.textContent = r.name;
-      const cnt = document.createElement('span'); cnt.className = 'cnt'; cnt.textContent = `${r.members.length}/4`;
-      head.append(rn, cnt);
-      if (!r.members.length) {
-        const del = document.createElement('button'); del.className = 'ghost'; del.title = 'Odayı sil'; del.textContent = '🗑';
-        del.onclick = () => { if (confirmDelete(r.name)) send({ t: 'delete', room: r.name }); };
-        head.appendChild(del);
-      }
-      const btn = document.createElement('button');
-      if (r.name === myRoom) { btn.textContent = 'Odadasın'; btn.onclick = () => show('room-view'); }
-      else { btn.textContent = r.members.length >= 4 ? 'Dolu' : 'Katıl'; btn.disabled = r.members.length >= 4; btn.onclick = () => joinRoom(r.name); }
-      head.appendChild(btn);
-      el.appendChild(head);
-      if (r.members.length) {
-        const ppl = document.createElement('div'); ppl.className = 'people';
-        for (const p of r.members) {
-          const chip = document.createElement('span'); chip.className = 'person'; chip.dataset.id = p.id;
-          const av = document.createElement('span'); av.className = 'av'; av.style.background = colorOf(p.id); av.textContent = initial(p.name);
-          const nm = document.createElement('span'); nm.textContent = p.name + (p.id === myId ? ' (sen)' : '') + (p.muted ? ' 🔇' : '') + (p.cam ? ' 📷' : '');
-          chip.append(av, nm); ppl.appendChild(chip);
-        }
-        el.appendChild(ppl);
-      }
-      list.appendChild(el);
-    }
+    // TeamSpeak gibi ağaç: oda listesinde ve oda içindeki yan panelde aynı görünüm
+    buildTree($('roomList'));
+    buildTree($('roomTree'));
     const lob = state.lobby || [];
     $('lobbyPeople').textContent = lob.length ? `Odalarda değil: ${lob.map((p) => p.name).join(', ')}` : '';
     // Oda içindeysek başlık bilgisini de güncelle
@@ -209,6 +181,51 @@
       $('rInfo').textContent = r ? `${r.members.length}/4 kişi` : '';
     }
   }
+  function buildTree(box) {
+    if (!box) return;
+    box.textContent = '';
+    const root = document.createElement('div'); root.className = 'tree-root';
+    root.textContent = `🏠 ${community}${locked ? ' 🔒' : ''}`;
+    box.appendChild(root);
+    for (const r of state.rooms) {
+      const full = r.members.length >= 4;
+      const ch = document.createElement('div');
+      ch.className = 'ch' + (r.name === myRoom ? ' mine' : '') + (full ? ' full' : '');
+      ch.title = r.name === myRoom ? 'Bu odadasın' : full ? 'Oda dolu' : 'Odaya geçmek için dokun';
+      const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = r.members.length ? '🔊' : '🔈';
+      const nm = document.createElement('span'); nm.className = 'rn'; nm.textContent = r.name;
+      const cnt = document.createElement('span'); cnt.className = 'cnt'; cnt.textContent = `${r.members.length}/4`;
+      ch.append(ic, nm, cnt);
+      if (!r.members.length) {
+        const del = document.createElement('button'); del.className = 'del'; del.title = 'Odayı sil'; del.textContent = '🗑';
+        del.onclick = (e) => { e.stopPropagation(); if (confirmDelete(r.name)) send({ t: 'delete', room: r.name }); };
+        ch.appendChild(del);
+      }
+      ch.onclick = () => {
+        if (r.name === myRoom) { closeTree(); show('room-view'); return; }
+        if (full) { toast('Oda dolu (en fazla 4 kişi)'); return; }
+        closeTree();
+        joinRoom(r.name);
+      };
+      box.appendChild(ch);
+      r.members.forEach((p, i) => {
+        const u = document.createElement('div');
+        u.className = 'user person' + (i === r.members.length - 1 ? ' last' : '');
+        u.dataset.id = p.id;
+        const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = colorOf(p.id); dot.textContent = initial(p.name);
+        const un = document.createElement('span'); un.className = 'un'; un.textContent = p.name + (p.id === myId ? ' (sen)' : '');
+        const fl = document.createElement('span'); fl.className = 'fl'; fl.textContent = (p.muted ? '🔇' : '') + (p.cam ? '📷' : '');
+        u.append(dot, un, fl);
+        box.appendChild(u);
+      });
+    }
+  }
+  function openTree() { $('treePanel').classList.remove('hidden'); }
+  function closeTree() { $('treePanel').classList.add('hidden'); }
+  $('treeBtn').onclick = openTree;
+  $('treeClose').onclick = closeTree;
+  $('treePanel').addEventListener('click', (e) => { if (e.target === $('treePanel')) closeTree(); });
+
   // Basit onay (tarayıcı confirm'ü bazı ortamlarda engelli): ikinci dokunuşta sil
   function confirmDelete(name) {
     if (confirmDelete.last === name && Date.now() - confirmDelete.at < 3000) { confirmDelete.last = null; return true; }
@@ -281,7 +298,14 @@
 
   // ---------- Odaya giriş / çıkış ----------
   async function joinRoom(name, isRejoin = false) {
-    if (myRoom && myRoom !== name && !isRejoin) leaveRoom();
+    if (myRoom && myRoom !== name && !isRejoin) {
+      // TeamSpeak gibi doğrudan başka odaya geç: kamera/mikrofon açık kalır, sadece bağlantılar yenilenir
+      for (const id of [...peers.keys()]) closePeer(id);
+      for (const t of [...$('tiles').querySelectorAll('.tile:not(.me)')]) t.remove();
+      $('rchatLog').textContent = '';
+      myRoom = null;
+      setStatus(`"${name}" odasına geçiliyor…`);
+    }
     wantRoom = name;
     try { await ensureMedia(); } catch (e) {
       toast('Mikrofon izni gerekli: ' + e.message, 4000); wantRoom = null; return;
@@ -616,7 +640,7 @@
     if (micOn && level(localAnalyser) > 0.04) speaking.add(myId);
     for (const p of peers.values()) if (!p.muted && level(p.analyser) > 0.04) speaking.add(p.id);
     for (const t of $('tiles').querySelectorAll('.tile')) t.classList.toggle('speaking', speaking.has(t.dataset.id));
-    for (const c of $('roomList').querySelectorAll('.person')) c.classList.toggle('speaking', speaking.has(c.dataset.id));
+    for (const c of document.querySelectorAll('.tree .person')) c.classList.toggle('speaking', speaking.has(c.dataset.id));
   }
 
   // ---------- Veri ölçümü ----------

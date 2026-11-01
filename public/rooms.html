@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1220">
   <link rel="manifest" href="manifest.webmanifest">
   <title>DusukMB · Topluluk</title>
-  <link rel="stylesheet" href="rooms.css?v=2">
+  <link rel="stylesheet" href="rooms.css?v=4">
 </head>
 <body>
   <!-- 1) Giriş: topluluk kodu + takma ad -->
@@ -44,7 +44,7 @@
         <button id="clearPass" type="button" class="ghost-btn">Parolayı kaldır</button>
       </div>
     </div>
-    <div id="roomList" class="room-list"></div>
+    <div id="roomList" class="tree"></div>
     <form id="createForm" class="create" autocomplete="off">
       <input id="newRoom" placeholder="Yeni oda adı" maxlength="32">
       <button type="submit">+ Oda</button>
@@ -59,7 +59,14 @@
       <div class="title"><b id="rName">-</b><small id="rInfo">-</small></div>
       <span id="rData" class="data" title="Bu telefonun saatlik veri tahmini">-</span>
       <button id="roomShareBtn" class="icon" title="Bu odaya davet linki">🔗</button>
+      <button id="treeBtn" class="icon" title="Odalar">☰</button>
     </header>
+    <aside id="treePanel" class="tree-panel hidden">
+      <div class="tree-box">
+        <div class="tree-head"><b>Odalar</b><button id="treeClose" class="icon" title="Kapat">✕</button></div>
+        <div id="roomTree" class="tree"></div>
+      </div>
+    </aside>
     <div id="tiles" class="tiles"></div>
     <div id="rstatus" class="status hidden"></div>
     <div id="rchat" class="chat-ov">
@@ -83,6 +90,6 @@
   </main>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="rooms.js?v=4"></script>
+  <script src="rooms.js?v=5"></script>
 </body>
 </html>
