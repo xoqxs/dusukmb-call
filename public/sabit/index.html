@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>DusukMB Call</title>
+  <link rel="stylesheet" href="style.css?v=7">
+</head>
+<body>
+  <main id="lobby" class="screen">
+    <h1>DusukMB Call</h1>
+    <p class="sub">Saatte ~50 MB ile görüntülü görüşme (toplam)</p>
+    <label for="room">Oda kodu</label>
+    <input id="room" autocomplete="off" placeholder="örn: gemi42">
+    <button id="joinBtn">Görüşmeye katıl</button>
+    <button id="randomBtn" class="ghost">Yeni oda oluştur</button>
+    <p class="hint">Aynı oda kodunu karşı tarafa gönder. Linki paylaşman yeterli.</p>
+  </main>
+
+  <main id="call" class="screen hidden">
+    <div class="stage">
+      <canvas id="remoteCanvas"></canvas>
+      <video id="remoteVideo" playsinline autoplay></video>
+      <img id="remoteSnap" class="hidden" alt="">
+      <video id="localVideo" playsinline autoplay muted></video>
+      <div id="status" class="status">Bağlanıyor…</div>
+      <!-- YouTube canlı sohbeti gibi: mesajlar videonun üstünde akar, birkaç saniye sonra kaybolur -->
+      <div id="chat" class="chat-ov">
+        <div id="chatLog" class="chat-log"></div>
+        <div id="chatTyping" class="chat-typing hidden">yazıyor…</div>
+        <form id="chatForm" class="chat-form hidden" autocomplete="off">
+          <input id="chatInput" maxlength="500" placeholder="Mesaj yaz…" enterkeyhint="send">
+          <button id="chatSend" type="submit" title="Gönder">➤</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="micBtn" title="Mikrofon">🎤</button>
+      <button id="camBtn" title="Kamera">📷</button>
+      <button id="enhanceBtn" class="on" title="Netleştirme">✨</button>
+      <button id="chatBtn" title="Mesaj">💬<span id="chatBadge" class="badge hidden">0</span></button>
+      <button id="statsBtn" title="İstatistik">📊</button>
+      <button id="shareBtn" title="Linki paylaş">🔗</button>
+      <button id="hangBtn" class="danger" title="Kapat">✕</button>
+    </div>
+
+
+
+    <section id="stats" class="stats hidden">
+      <div class="row"><span>Profil</span>
+        <select id="profile">
+          <option value="endusuk">En düşük (~20 MB/sa, fotoğraf)</option>
+          <option value="cokdusuk">Çok düşük (~28 MB/sa, fotoğraf)</option>
+          <option value="normal" selected>Normal (~45 MB/sa)</option>
+          <option value="iyi">İyi (~85 MB/sa)</option>
+          <option value="hd">HD 720p (~800 MB/sa)</option>
+          <option value="ses">Sadece ses (~15 MB/sa)</option>
+          <option value="ozel">Özel ayar</option>
+        </select>
+      </div>
+      <div class="row"><span></span><button id="customBtn" type="button" class="link">⚙️ Özel ayar</button></div>
+      <div id="custom" class="custom hidden">
+        <label>Kare hızı <b id="fpsVal">-</b>
+          <input id="fpsRange" type="range" min="0" max="11" step="1" value="7"></label>
+        <label>Video bit hızı <b id="bitVal">-</b>
+          <input id="bitRange" type="range" min="0" max="100" step="1" value="35"></label>
+      </div>
+      <div class="row estimate" id="estimate">-</div>
+      <div class="row"><span>Codec seçimi</span>
+        <select id="codec">
+          <option value="auto" selected>Otomatik</option>
+          <option value="av1">AV1 (en verimli)</option>
+          <option value="vp9">VP9</option>
+          <option value="h264">H.264</option>
+        </select>
+      </div>
+      <div class="row"><span>Giden</span><b id="sOut">-</b></div>
+      <div class="row"><span>Gelen</span><b id="sIn">-</b></div>
+      <div class="row"><span>Karşı görüntü</span><b id="sRes">-</b></div>
+      <div class="row"><span>Kullanılan codec</span><b id="sCodec">-</b></div>
+      <div class="row"><span>Bağlantı</span><b id="sPath">-</b></div>
+      <div class="row"><span>Bu görüşme</span><b id="sTotal">-</b></div>
+      <div class="row"><span>Saatlik</span><b id="sHour">-</b></div>
+      <div class="row"><span>Netleştirme</span><b id="sGpu">-</b></div>
+    </section>
+  </main>
+
+  <script src="peerjs.min.js?v=1"></script>
+  <script src="enhance.js?v=4"></script>
+  <script src="app.js?v=9"></script>
+</body>
+</html>
