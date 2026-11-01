@@ -8,14 +8,22 @@
   <meta name="apple-mobile-web-app-title" content="DusukMB">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg">
-  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <main id="lobby" class="screen">
     <div class="brand"><img src="icon.svg" alt="" width="44" height="44"><h1>DusukMB Call</h1></div>
     <p class="sub">Zayıf internette görüntülü görüşme · saatte ~45 MB</p>
+    <!-- Ana ekrana ekle (iPhone + Android) -->
+    <section id="installCard" class="install hidden">
+      <img src="icon-192.png" alt="" width="40" height="40">
+      <div class="install-txt"><b>Ana ekrana ekle</b><small>Uygulama gibi açılır, aramalar arkada da çalar</small></div>
+      <button id="installBtn">Ekle</button>
+      <button id="installX" class="install-x" title="Şimdilik kapat">✕</button>
+    </section>
     <!-- Kullanıcı adıyla arama -->
     <section id="me" class="card">
       <div id="meOff">
@@ -173,10 +181,19 @@
       </div>
     </div>
   </section>
+  <!-- Ana ekrana ekleme adımları -->
+  <section id="installSheet" class="sheet hidden">
+    <div class="sheet-box">
+      <div class="sheet-head"><b>Ana ekrana ekle</b><button class="sheet-x" data-close="installSheet" title="Kapat">✕</button></div>
+      <ol id="installSteps" class="steps"></ol>
+      <p class="sheet-sub">Sonra DusukMB'yi ana ekrandaki simgeden aç.</p>
+      <div id="installArrow" class="install-arrow hidden">⬇︎</div>
+    </div>
+  </section>
   <div id="toast" class="toast hidden"></div>
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

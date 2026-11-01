@@ -705,7 +705,7 @@
   }
   async function showNote(title, body, tag) {
     if (notifyState() !== 'granted') return;
-    const opts = { body, tag, renotify: true, icon: 'icon.svg', badge: 'icon.svg', vibrate: [200, 100, 200], data: { url: inviteUrl() } };
+    const opts = { body, tag, renotify: true, icon: 'icon-192.png', badge: 'icon-192.png', vibrate: [200, 100, 200], data: { url: inviteUrl() } };
     try {
       const reg = swReg || (navigator.serviceWorker && await navigator.serviceWorker.getRegistration());
       if (reg) { await reg.showNotification(title, opts); return; }
@@ -1270,6 +1270,38 @@
   setInterval(() => { if (peerPresent && (callWs || ringback)) { stopRingback(); if (callWs) { try { callWs.close(); } catch {} callWs = null; } } }, 500);
   $('callBtn').onclick = () => callUser($('callName').value);
   $('callName').addEventListener('keydown', (e) => { if (e.key === 'Enter') callUser($('callName').value); });
+
+  // ---------- Ana ekrana ekle ----------
+  // Android (Chrome/Edge/Samsung): tarayıcının kurulum penceresi tek dokunuşla açılır.
+  // iPhone: Apple buna izin vermiyor; Safari'de Paylaş → Ana Ekrana Ekle adımları gösterilir.
+  const IS_ANDROID = /Android/i.test(navigator.userAgent);
+  const IOS_SAFARI = IS_IOS && /Safari/i.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
+  let installEvt = null;
+  const installHidden = () => { const t = lsGet('dusukmb-install-x', 0); return t && Date.now() - t < 3 * 864e5; };
+  function showInstallCard() {
+    if (IS_STANDALONE || installHidden()) return;
+    if (installEvt || IS_IOS || IS_ANDROID) $('installCard').classList.remove('hidden');
+  }
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; showInstallCard(); });
+  window.addEventListener('appinstalled', () => { installEvt = null; $('installCard').classList.add('hidden'); closeSheets(); toast('Eklendi ✓ Ana ekrandaki simgeden açabilirsin', 4000); });
+  $('installX').onclick = () => { lsSet('dusukmb-install-x', Date.now()); $('installCard').classList.add('hidden'); };
+  $('installBtn').onclick = async () => {
+    if (installEvt) {
+      const e = installEvt; installEvt = null;
+      try { await e.prompt(); const r = await e.userChoice; if (r && r.outcome === 'accepted') $('installCard').classList.add('hidden'); } catch {}
+      return;
+    }
+    const share = '<span class="ico">⬆︎</span>';
+    const steps = IS_IOS
+      ? (IOS_SAFARI
+        ? [`Alttaki <b>Paylaş</b> düğmesine bas ${share}`, `Listeyi kaydırıp <b>Ana Ekrana Ekle</b> <span class="ico">＋</span> seç`, `Sağ üstte <b>Ekle</b>'ye bas`]
+        : [`Adres çubuğundaki <b>Paylaş</b> düğmesine bas ${share}`, `<b>Ana Ekrana Ekle</b> seç (görünmüyorsa bu sayfayı <b>Safari</b>'de aç)`, `<b>Ekle</b>'ye bas`])
+      : [`Sağ üstteki <b>menü</b> düğmesine bas <span class="ico">⋮</span>`, `<b>Ana ekrana ekle</b> ya da <b>Uygulamayı yükle</b> seç`, `<b>Ekle / Yükle</b>'ye bas`];
+    $('installSteps').innerHTML = steps.map((x) => `<li>${x}</li>`).join('');
+    $('installArrow').classList.toggle('hidden', !IOS_SAFARI);
+    closeSheets(); $('installSheet').classList.remove('hidden');
+  };
+  showInstallCard();
 
   renderMe(); refreshContacts(); shareMeWithSw();
   apiReady.then(() => { shareMeWithSw(); if (me && lsGet(ONLINE_KEY, false)) { connectPhone(); subscribePush(); } });
