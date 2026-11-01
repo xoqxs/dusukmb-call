@@ -11,12 +11,12 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
   <main id="lobby" class="screen">
     <div class="brand"><img src="icon.svg" alt="" width="44" height="44"><h1>DusukMB Call</h1></div>
-    <p class="sub">Zayıf internette görüntülü görüşme · saatte ~45 MB</p>
+    <p class="sub">Önce sesle başlar (~15 MB/sa), istersen kamerayı açarsın (~45 MB/sa)</p>
     <!-- Ana ekrana ekle (iPhone + Android) -->
     <section id="installCard" class="install hidden">
       <img src="icon-192.png" alt="" width="40" height="40">
@@ -65,6 +65,14 @@
       <video id="remoteVideo" playsinline autoplay></video>
       <img id="remoteSnap" class="hidden" alt="">
       <video id="localVideo" playsinline autoplay muted></video>
+      <!-- Kameralar kapalıyken: sesli görüşme ekranı -->
+      <div id="voiceView" class="voice-view hidden">
+        <div class="voice-ring">🔈</div>
+        <b>Sesli görüşme</b>
+        <span id="voiceSub">Kameralar kapalı · veri tasarrufu</span>
+      </div>
+      <button id="camCta" class="cam-cta">📷 Kamerayı aç</button>
+      <button id="camSuggest" class="cam-suggest hidden">Karşı taraf kamerasını açtı · <b>📷 Sen de aç</b></button>
       <div id="topBar" class="top-bar hidden">
         <span id="qBars" class="qbars" title="Bağlantı kalitesi"><i></i><i></i><i></i></span>
         <span id="mbBadge" class="mb-badge" title="Bu görüşmede harcanan veri">0 MB</span>
@@ -118,6 +126,7 @@
           <button data-p="fhd"><b>1080p</b><small>~2 GB/sa · Wi-Fi</small></button>
         </div>
         <label class="switch"><input id="autoQ" type="checkbox" checked> Bağlantı zayıflayınca otomatik düşür</label>
+        <label class="switch"><input id="camStart" type="checkbox"> Görüşmeler kamerayla başlasın</label>
         <div class="sheet-row">
           <button id="enhanceBtn" class="btn on">✨ Netleştirme</button>
           <button id="notifyBtn" class="btn">🔔 Bildirim</button>
@@ -194,6 +203,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
