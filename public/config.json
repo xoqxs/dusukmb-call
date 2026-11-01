@@ -1,0 +1,4 @@
+{
+  "signal": { "host": "0.peerjs.com", "port": 443, "secure": true, "path": "/", "key": "peerjs", "name": "PeerJS" },
+  "phoneApi": "https://dusukmb-signal.akadirpars.workers.dev"
+}

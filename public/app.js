@@ -21,6 +21,26 @@
   const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
+  // ---------- Ana adres: GitHub ----------
+  // workers.dev bazı ağlarda engelli; uygulamanın asıl adresi GitHub. Eski adresten açanlar kullanıcı adı,
+  // kişi listesi ve sohbet ayarlarıyla birlikte buraya taşınır (bilgiler sadece adresin # kısmında, sunucuya gitmez).
+  const HOME_URL = 'https://xoqxs.github.io/dusukmb-call/sade/';
+  const MOVE_KEYS = ['dusukmb-me', 'dusukmb-online', 'dusukmb-contacts', 'dusukmb-install-x'];
+  if (/\.workers\.dev$/.test(location.hostname) && !/[?&]kal=1/.test(location.search)) {
+    const pack = {};
+    for (const k of MOVE_KEYS) { try { const v = localStorage.getItem(k); if (v != null) pack[k] = v; } catch {} }
+    const hash = Object.keys(pack).length ? '#tasi=' + encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(pack))))) : '';
+    location.replace(HOME_URL + location.search + hash);
+    return;
+  }
+  if (location.hash.startsWith('#tasi=')) {
+    try {
+      const pack = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(6))))));
+      for (const k of MOVE_KEYS) if (typeof pack[k] === 'string' && localStorage.getItem(k) == null) localStorage.setItem(k, pack[k]);
+    } catch {}
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
   const lobby = $('lobby'), call = $('call');
   const localVideo = $('localVideo'), remoteVideo = $('remoteVideo'), remoteCanvas = $('remoteCanvas');
   const statusEl = $('status');
@@ -1283,17 +1303,32 @@
   const ME_KEY = 'dusukmb-me', ONLINE_KEY = 'dusukmb-online', CONTACTS_KEY = 'dusukmb-contacts';
   let me = lsGet(ME_KEY, null), phoneWs = null, phoneRetry = 0, phoneTimer = null, phonePing = null, inRing = null;
   let apiBase = '', wsBase = '';
+  // Cloudflare (bildirim/push sunucusu) bazı ağlarda engelli olabilir: her şey onsuz da çalışır, ulaşılırsa ek olarak kullanılır
   const apiReady = cfgP.then((cfg) => {
-    const host = cfg.signal && cfg.signal.host ? cfg.signal.host : location.host;
-    const secure = cfg.signal ? cfg.signal.secure !== false : location.protocol === 'https:';
-    const port = cfg.signal && cfg.signal.port && ![443, 80].includes(Number(cfg.signal.port)) ? ':' + cfg.signal.port : '';
-    apiBase = `${secure ? 'https' : 'http'}://${host}${port}`; wsBase = `${secure ? 'wss' : 'ws'}://${host}${port}`;
+    let base = cfg.phoneApi;
+    if (!base) {
+      const host = cfg.signal && cfg.signal.host ? cfg.signal.host : location.host;
+      const secure = cfg.signal ? cfg.signal.secure !== false : location.protocol === 'https:';
+      const port = cfg.signal && cfg.signal.port && ![443, 80].includes(Number(cfg.signal.port)) ? ':' + cfg.signal.port : '';
+      base = `${secure ? 'https' : 'http'}://${host}${port}`;
+    }
+    apiBase = base.replace(/\/$/, ''); wsBase = apiBase.replace(/^http/, 'ws');
   });
+  let cfOk = null; // Cloudflare'e ulaşılabiliyor mu
   const api = async (path, body) => {
     await apiReady;
-    const r = await fetch(apiBase + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
-    return r.json().catch(() => ({}));
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 6000);
+    try {
+      const r = await fetch(apiBase + path, { signal: ac.signal, ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
+      cfOk = true;
+      return await r.json().catch(() => ({}));
+    } catch { cfOk = false; return { netError: true }; }
+    finally { clearTimeout(t); }
   };
+  // Doğrudan (sunucusuz) arama için kullanıcı adının PeerJS kimliği
+  const phoneId = (n) => 'dmbu' + [...new TextEncoder().encode(n)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  const peerOpts = async () => { const c = (await cfgP).signal || { host: '0.peerjs.com', port: 443, secure: true, path: '/', key: 'peerjs' };
+    return { host: c.host, port: Number(c.port), secure: c.secure, path: c.path, key: c.key, debug: 0 }; };
   const nameQ = (n) => 'name=' + encodeURIComponent(n);
   // Service worker'ın arka planda okuyabilmesi için kimlik bilgisini önbelleğe yaz
   async function shareMeWithSw() {
@@ -1311,7 +1346,7 @@
     if (me) { $('myName').value = me.name; $('meName').textContent = '@' + me.name; }
     if (online) {
       const st = notifyState();
-      const live = phoneWs && phoneWs.readyState === 1;
+      const live = (phoneWs && phoneWs.readyState === 1) || (p2pPeer && p2pPeer.open);
       $('meState').textContent = live ? 'çevrimiçi' : 'bağlanıyor…';
       $('meState').style.color = live ? '' : '#ffc94d';
       $('meNotify').classList.toggle('hidden', st !== 'default');
@@ -1329,13 +1364,14 @@
     if (!me || me.name !== name) {
       const token = me && me.token ? me.token : [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
       const r = await api('/phone/claim?' + nameQ(name), { token });
-      if (!r.ok) { toast(r.error || 'Sunucuya ulaşılamadı', 3500); return; }
-      me = { name, token }; lsSet(ME_KEY, me);
+      if (!r.ok && !r.netError) { toast(r.error || 'Sunucuya ulaşılamadı', 3500); return; }
+      // Bildirim sunucusuna ulaşılamadıysa ad sadece bu cihazda tutulur; doğrudan arama yine çalışır
+      me = { name, token, unclaimed: !!r.netError }; lsSet(ME_KEY, me);
     }
     lsSet(ONLINE_KEY, true);
     // Bildirim izni bu dokunuşla istenir (tarayıcılar dokunuş olmadan izin penceresini göstermiyor)
     if (notifyState() === 'default') { try { await Notification.requestPermission(); } catch {} }
-    connectPhone(); subscribePush(); shareMeWithSw(); renderMe();
+    connectPhone(); connectP2PPhone(); subscribePush(); shareMeWithSw(); renderMe();
   }
   $('goOnline').onclick = goOnline;
   $('myName').addEventListener('keydown', (e) => { if (e.key === 'Enter') goOnline(); });
@@ -1343,6 +1379,7 @@
     lsSet(ONLINE_KEY, false);
     if (phoneWs) { phoneWs.onclose = null; phoneWs.close(); phoneWs = null; }
     clearTimeout(phoneTimer); clearInterval(phonePing);
+    clearTimeout(p2pTimer); if (p2pPeer) { try { p2pPeer.destroy(); } catch {} p2pPeer = null; }
     try { const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription();
       if (sub) { await api('/phone/unsub?' + nameQ(me.name), { token: me.token, sub: sub.toJSON() }); } } catch {}
     renderMe();
@@ -1352,6 +1389,11 @@
   async function connectPhone() {
     await apiReady;
     if (!me || !lsGet(ONLINE_KEY, false)) return;
+    if (me.unclaimed) {
+      const r = await api('/phone/claim?' + nameQ(me.name), { token: me.token });
+      if (r.ok) { me.unclaimed = false; lsSet(ME_KEY, me); subscribePush(); }
+      else { phoneTimer = setTimeout(connectPhone, 60000); return; } // engelli ağ ya da ad başkasında: sadece doğrudan arama
+    }
     if (phoneWs && phoneWs.readyState <= 1) return;
     clearTimeout(phoneTimer);
     const ws = new WebSocket(`${wsBase}/phone/ws?${nameQ(me.name)}&role=owner&token=${encodeURIComponent(me.token)}`);
@@ -1377,8 +1419,37 @@
       phoneTimer = setTimeout(connectPhone, Math.min(30000, 1000 * 2 ** phoneRetry++));
     };
   }
-  window.addEventListener('online', () => { phoneRetry = 0; connectPhone(); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { phoneRetry = 0; connectPhone(); refreshContacts(); } });
+  window.addEventListener('online', () => { phoneRetry = 0; connectPhone(); connectP2PPhone(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { phoneRetry = 0; connectPhone(); connectP2PPhone(); refreshContacts(); } });
+
+  // ----- Doğrudan çevrimiçi kalma (PeerJS) -----
+  // Telefon, kullanıcı adından türetilen bir kimlikle ücretsiz PeerJS sunucusuna bağlı kalır.
+  // Arayan bu kimliğe doğrudan bağlanıp "çal" mesajı yollar; Cloudflare engelli olsa da çalışır.
+  let p2pPeer = null, p2pTimer = null;
+  async function connectP2PPhone() {
+    if (!me || !lsGet(ONLINE_KEY, false) || !window.Peer) return;
+    if (p2pPeer && !p2pPeer.destroyed) { if (p2pPeer.disconnected) { try { p2pPeer.reconnect(); } catch {} } return; }
+    clearTimeout(p2pTimer);
+    const p = new Peer(phoneId(me.name), await peerOpts());
+    p2pPeer = p;
+    p.on('open', renderMe);
+    p.on('disconnected', () => { renderMe(); if (p === p2pPeer && !p.destroyed) setTimeout(() => { try { p.reconnect(); } catch {} }, 2000); });
+    p.on('error', (e) => {
+      if (p !== p2pPeer) return;
+      if (e.type === 'unavailable-id') { /* bu ad başka bir sekmede/cihazda zaten açık */ }
+      try { p.destroy(); } catch {}
+      p2pPeer = null; renderMe();
+      p2pTimer = setTimeout(connectP2PPhone, e.type === 'unavailable-id' ? 30000 : 5000);
+    });
+    p.on('connection', (c) => {
+      c.on('data', (m) => {
+        if (!m || m.t !== 'ring') { if (m && m.t === 'cancel' && inRing && inRing.via === c) { const who = inRing.from; stopIncoming(); toast(`@${who} aradı, cevapsız kaldı`, 4000); } return; }
+        incoming({ id: String(m.id), from: String(m.from || 'misafir').slice(0, 20), room: String(m.room), video: !!m.video, via: c });
+        try { c.send({ t: 'ringing', online: true }); } catch {}
+      });
+      c.on('close', () => { if (inRing && inRing.via === c) { const who = inRing.from; stopIncoming(); toast(`@${who} aradı, cevapsız kaldı`, 4000); } });
+    });
+  }
 
   // Web Push aboneliği: tarayıcı arka planda uyurken bile arama bildirimini getirir
   async function subscribePush() {
@@ -1401,7 +1472,7 @@
     if (inRing && inRing.id === r.id) return;
     // Başka bir görüşmedeyken: meşgul
     if (room) { answerRing(r, false); toast(`@${r.from} aradı (görüşmede olduğun için meşgul dendi)`, 4000); return; }
-    inRing = { id: r.id, from: r.from, room: r.room, video: !!r.video };
+    inRing = { id: r.id, from: r.from, room: r.room, video: !!r.video, via: r.via || null };
     $('inName').textContent = '@' + r.from;
     $('inSub').textContent = r.video ? '📹 görüntülü arıyor…' : '📞 sesli arıyor…';
     $('inAvatar').textContent = (r.from[0] || '?').toUpperCase();
@@ -1442,6 +1513,12 @@
     try { const reg = swReg || await navigator.serviceWorker.getRegistration(); if (reg) (await reg.getNotifications({ tag: 'dusukmb-call' })).forEach((n) => n.close()); } catch {}
   }
   async function answerRing(r, accept) {
+    if (r.via && r.via.send) {
+      const c = r.via;
+      try { c.send({ t: 'answer', accept }); } catch {}
+      setTimeout(() => { try { c.close(); } catch {} }, 1500);
+      return true;
+    }
     if (phoneWs && phoneWs.readyState === 1) { phoneWs.send(JSON.stringify({ t: 'answer', id: r.id, accept })); return true; }
     if (!me) return false;
     const res = await api('/phone/answer?' + nameQ(me.name), { token: me.token, id: r.id, accept });
@@ -1459,7 +1536,7 @@
   });
 
   // ----- Arama yap -----
-  let callWs = null, ringback = null, calling = '';
+  let callWs = null, callPeer = null, ringback = null, calling = '';
   function contacts() { return lsGet(CONTACTS_KEY, []); }
   function addContact(n) { lsSet(CONTACTS_KEY, [n, ...contacts().filter((x) => x !== n)].slice(0, 8)); }
   function renderContacts(st = {}) {
@@ -1491,25 +1568,54 @@
     const code = newRoomCode();
     await start(code, { video });
     if (!room) return; // kamera/mikrofon izni yok
-    await apiReady;
     setStatus(`📞 @${n} aranıyor…`);
-    const ws = new WebSocket(`${wsBase}/phone/ws?${nameQ(n)}&role=caller&room=${code}&video=${video ? 1 : 0}&from=${encodeURIComponent(me ? me.name : 'misafir')}`);
-    callWs = ws;
+    const from = me ? me.name : 'misafir';
     const end = (text, ms = 3000, invite = false) => {
       stopRingback(); setStatus(text);
       if (invite) openInvite();
       else setTimeout(() => { if (!peerPresent) $('hangBtn').click(); }, ms);
     };
+    const onAnswer = (accept) => { stopRingback(); if (accept) setStatus('Açtı, bağlanıyor…'); else end(`@${n} aramayı reddetti`); };
+    // 1) Doğrudan: karşı taraf PeerJS'te çevrimiçiyse anında çalar (Cloudflare gerekmez)
+    const direct = await new Promise(async (resolve) => {
+      if (!window.Peer) return resolve(false);
+      let done = false; const fin = (v) => { if (!done) { done = true; resolve(v); } };
+      const p = new Peer(await peerOpts());
+      callPeer = p;
+      const giveUp = setTimeout(() => { fin(false); }, 8000);
+      p.on('error', (e) => { if (!done) { clearTimeout(giveUp); fin(false); } });
+      p.on('open', () => {
+        const c = p.connect(phoneId(n), { reliable: true });
+        c.on('open', () => {
+          clearTimeout(giveUp);
+          const id = Math.random().toString(36).slice(2, 10);
+          c.send({ t: 'ring', id, from, room: code, video });
+          setStatus(`📞 @${n} çalıyor…`); startRingback(); fin(true);
+          const noAns = setTimeout(() => { try { c.send({ t: 'cancel' }); } catch {} end(`@${n} cevap vermedi`); }, 45000);
+          c.on('data', (m) => { if (m && m.t === 'answer') { clearTimeout(noAns); onAnswer(!!m.accept); } });
+          c.on('close', () => clearTimeout(noAns));
+        });
+      });
+    });
+    if (direct) return;
+    if (callPeer) { try { callPeer.destroy(); } catch {} callPeer = null; }
+    // 2) Bildirim sunucusu (Cloudflare): telefon uyuyorsa push ile uyandırır
+    await apiReady;
+    let opened = false;
+    const ws = new WebSocket(`${wsBase}/phone/ws?${nameQ(n)}&role=caller&room=${code}&video=${video ? 1 : 0}&from=${encodeURIComponent(from)}`);
+    callWs = ws;
+    const wsFail = setTimeout(() => { if (!opened) { try { ws.close(); } catch {} end(`@${n} şu an çevrimdışı görünüyor. Davet linki gönderebilirsin 👇`, 0, true); } }, 7000);
+    ws.onopen = () => { opened = true; clearTimeout(wsFail); };
     ws.onmessage = (e) => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
       if (m.t === 'ringing') { setStatus(`📞 @${n} ${m.online ? 'çalıyor…' : 'aranıyor… (bildirim gönderildi)'}`); startRingback(); }
-      else if (m.t === 'answer') { stopRingback(); if (m.accept) setStatus('Açtı, bağlanıyor…'); else end(`@${n} aramayı reddetti`); try { ws.close(); } catch {} }
+      else if (m.t === 'answer') { onAnswer(!!m.accept); try { ws.close(); } catch {} }
       else if (m.t === 'noanswer') end(`@${n} cevap vermedi`);
       else if (m.t === 'offline') end(`@${n} şu an çevrimdışı. Davet linki gönderebilirsin 👇`, 0, true);
-      else if (m.t === 'nouser') end(`@${n} diye bir kullanıcı yok`);
+      else if (m.t === 'nouser') end(`@${n} şu an çevrimdışı ya da böyle bir kullanıcı yok. Davet linki gönderebilirsin 👇`, 0, true);
       else if (m.t === 'busy') end(`@${n} şu an başka bir aramada`);
     };
-    ws.onerror = () => { if (!peerPresent) setStatus('Arama sunucusuna ulaşılamadı. Davet linki gönderebilirsin 🔗'); };
+    ws.onerror = () => { clearTimeout(wsFail); if (!peerPresent && !opened) end(`@${n} şu an çevrimdışı görünüyor. Davet linki gönderebilirsin 👇`, 0, true); };
   }
   function startRingback() {
     stopRingback();
@@ -1526,7 +1632,7 @@
   }
   function stopRingback() { clearInterval(ringback); ringback = null; }
   // Karşı taraf bağlanınca arama sinyalini kapat
-  setInterval(() => { if (peerPresent && (callWs || ringback)) { stopRingback(); if (callWs) { try { callWs.close(); } catch {} callWs = null; } } }, 500);
+  setInterval(() => { if (peerPresent && (callWs || ringback || callPeer)) { stopRingback(); if (callWs) { try { callWs.close(); } catch {} callWs = null; } if (callPeer) { const cp = callPeer; callPeer = null; setTimeout(() => { try { cp.destroy(); } catch {} }, 2000); } } }, 500);
   $('callBtn').onclick = () => callUser($('callName').value, false);
   $('vcallBtn').onclick = () => callUser($('callName').value, true);
   $('callName').addEventListener('keydown', (e) => { if (e.key === 'Enter') callUser($('callName').value, false); });
@@ -1564,7 +1670,7 @@
   showInstallCard();
 
   renderMe(); refreshContacts(); shareMeWithSw();
-  apiReady.then(() => { shareMeWithSw(); if (me && lsGet(ONLINE_KEY, false)) { connectPhone(); subscribePush(); } });
+  apiReady.then(() => { shareMeWithSw(); if (me && lsGet(ONLINE_KEY, false)) { connectPhone(); connectP2PPhone(); subscribePush(); } });
 
   // Önerilen linkle gelindiyse: arama kutusuna adı yaz
   if (params.get('ara') && NAME_RE.test(params.get('ara').toLowerCase())) {
