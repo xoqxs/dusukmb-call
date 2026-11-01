@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1220">
   <link rel="manifest" href="manifest.webmanifest">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <main id="lobby" class="screen">
@@ -26,6 +26,15 @@
       <img id="remoteSnap" class="hidden" alt="">
       <video id="localVideo" playsinline autoplay muted></video>
       <div id="status" class="status">Bağlanıyor…</div>
+      <!-- YouTube canlı sohbeti gibi: mesajlar videonun üstünde akar, birkaç saniye sonra kaybolur -->
+      <div id="chat" class="chat-ov">
+        <div id="chatLog" class="chat-log"></div>
+        <div id="chatTyping" class="chat-typing hidden">yazıyor…</div>
+        <form id="chatForm" class="chat-form hidden" autocomplete="off">
+          <input id="chatInput" maxlength="500" placeholder="Mesaj yaz…" enterkeyhint="send">
+          <button id="chatSend" type="submit" title="Gönder">➤</button>
+        </form>
+      </div>
     </div>
 
     <div class="controls">
@@ -38,18 +47,7 @@
       <button id="hangBtn" class="danger" title="Kapat">✕</button>
     </div>
 
-    <section id="chat" class="chat hidden">
-      <header>
-        <button id="chatClose" type="button" class="back" title="Kapat">←</button>
-        <div class="avatar">👤</div>
-        <div class="who"><b>Karşı taraf</b><small id="chatPeerStatus">bağlı değil</small></div>
-      </header>
-      <div id="chatLog" class="chat-log"></div>
-      <form id="chatForm" class="chat-form" autocomplete="off">
-        <input id="chatInput" maxlength="1000" placeholder="Mesaj" enterkeyhint="send">
-        <button id="chatSend" type="submit" title="Gönder">➤</button>
-      </form>
-    </section>
+
 
     <section id="stats" class="stats hidden">
       <div class="row"><span>Profil</span>
@@ -91,7 +89,7 @@
   </main>
 
   <script src="peerjs.min.js?v=1"></script>
-  <script src="enhance.js?v=3"></script>
-  <script src="app.js?v=8"></script>
+  <script src="enhance.js?v=4"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

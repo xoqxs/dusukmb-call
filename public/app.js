@@ -25,7 +25,7 @@
   let isOfferer = false, remoteIOS = false, pendingIce = [];
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null, frozenSince = 0, lastFrames = -1;
   function resetHourly() { hourBase = null; if ($('sHour')) $('sHour').textContent = 'ölçülüyor…'; }
-  window.__dusukmb = { get pc() { return pc; }, get conn() { return conn; }, get peer() { return peer; } }; // hata ayıklama için
+  window.__dusukmb = { get pc() { return pc; }, get conn() { return conn; }, get peer() { return peer; }, get enhancer() { return enhancer; } }; // hata ayıklama için
   const enhancer = window.Enhancer ? window.Enhancer.create(remoteVideo, remoteCanvas) : null;
 
   // ---------- Lobi ----------
@@ -243,9 +243,7 @@
         onChatAck(Array.isArray(msg.ids) ? msg.ids : [], 'read');
         break;
       case 'typing':
-        setPeerStatus('yazıyor…');
-        clearTimeout(typingTimer);
-        typingTimer = setTimeout(refreshPeerStatus, 3500);
+        showTyping(true);
         break;
       case 'bye':
         setStatus('Karşı taraf ayrıldı. Bekleniyor…');
@@ -539,117 +537,114 @@
   };
   $('statsBtn').onclick = () => $('stats').classList.toggle('hidden');
 
-  // ---------- Sohbet (WhatsApp tarzı) ----------
-  // Mesajlar doğrudan telefondan telefona gider. Bağlantı yokken yazılanlar sıraya alınır, bağlanınca gönderilir.
-  // Geçmiş bu telefonda (localStorage) saklanır; sunucuya gitmez.
-  let chat = [], unread = 0, typingTimer = null, lastTypingSent = 0;
+  // ---------- Sohbet (YouTube canlı sohbeti gibi, video üstünde) ----------
+  // Gelen/giden mesajlar videonun üstünde belirir ve birkaç saniye sonra kaybolur.
+  // 💬 ile yazma çubuğu ve geçmiş açılır. Mesajlar doğrudan telefondan telefona gider;
+  // bağlantı yokken yazılanlar sıraya alınır. Geçmiş bu telefonda (localStorage) saklanır.
+  const SHOW_MS = 8000; // kapalıyken bir mesajın ekranda kalma süresi
+  let chat = [], typingTimer = null, lastTypingSent = 0, fadeTimer = null;
   const chatKey = () => 'dusukmb-chat:' + roomKey(room);
-  const chatOpen = () => !$('chat').classList.contains('hidden');
+  const chatOpen = () => $('chat').classList.contains('open');
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   function saveChat() { try { localStorage.setItem(chatKey(), JSON.stringify(chat.slice(-200))); } catch {} }
   function loadChat() {
     try { chat = JSON.parse(localStorage.getItem(chatKey()) || '[]'); } catch { chat = []; }
+    for (const m of chat) m.shownAt = 0; // eski mesajlar video üstünde tekrar belirmesin
     renderChat();
   }
-  const fmtTime = (t) => { const d = new Date(t); return d.toTimeString().slice(0, 5); };
-  const fmtDay = (t) => {
-    const d = new Date(t), today = new Date();
-    const y = new Date(); y.setDate(today.getDate() - 1);
-    if (d.toDateString() === today.toDateString()) return 'Bugün';
-    if (d.toDateString() === y.toDateString()) return 'Dün';
-    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
   const tick = (st) => st === 'pending' ? '<span class="tick">🕓</span>'
     : st === 'sent' ? '<span class="tick">✓</span>'
     : st === 'read' ? '<span class="tick read">✓✓</span>' : '<span class="tick">✓✓</span>';
   function renderChat() {
     const log = $('chatLog');
-    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    const open = chatOpen();
+    const now = Date.now();
+    // Açıkken son 50 mesaj; kapalıyken sadece yeni gelenler (birkaç saniye görünür)
+    const list = open ? chat.slice(-50) : chat.filter((m) => m.shownAt && now - m.shownAt < SHOW_MS + 700).slice(-5);
     log.textContent = '';
-    let lastDay = '', lastWho = '';
-    if (!chat.length) {
-      const e = document.createElement('div'); e.className = 'chat-empty';
-      e.textContent = '🔒 Mesajlar doğrudan karşı tarafa gider, hiçbir sunucuda saklanmaz.';
-      log.appendChild(e);
-    }
-    for (const m of chat) {
-      const day = fmtDay(m.t);
-      if (day !== lastDay) {
-        const d = document.createElement('div'); d.className = 'chat-day'; d.textContent = day; log.appendChild(d);
-        lastDay = day; lastWho = '';
-      }
+    for (const m of list) {
       const row = document.createElement('div');
-      row.className = `msg ${m.who}${m.who !== lastWho ? ' first' : ''}`;
-      const txt = document.createElement('span'); txt.className = 'txt'; txt.textContent = m.text;
-      const meta = document.createElement('span'); meta.className = 'meta';
-      meta.innerHTML = fmtTime(m.t) + (m.who === 'me' ? ' ' + tick(m.status) : '');
-      row.append(txt, meta);
+      row.className = `cmsg ${m.who}`;
+      if (!open) { row.classList.add('fade'); row.style.setProperty('--fade', Math.max(0, SHOW_MS - (now - m.shownAt)) + 'ms'); }
+      const name = document.createElement('b'); name.textContent = m.who === 'me' ? 'Sen' : 'Karşı taraf';
+      const txt = document.createElement('span'); txt.textContent = m.text;
+      row.append(name, txt);
+      if (m.who === 'me') row.insertAdjacentHTML('beforeend', tick(m.status));
       log.appendChild(row);
-      lastWho = m.who;
     }
-    if (atBottom || chatOpen()) log.scrollTop = log.scrollHeight;
+    log.scrollTop = log.scrollHeight;
+    // Kapalıyken süresi dolan mesajları ekrandan kaldır
+    clearTimeout(fadeTimer);
+    if (!open && list.length) fadeTimer = setTimeout(renderChat, 1000);
   }
-  function setPeerStatus(text) { $('chatPeerStatus').textContent = text; }
-  function refreshPeerStatus() { setPeerStatus(conn && conn.open ? 'çevrimiçi' : 'bağlı değil'); }
+  function showTyping(on) {
+    $('chatTyping').classList.toggle('hidden', !on);
+    clearTimeout(typingTimer);
+    if (on) typingTimer = setTimeout(() => showTyping(false), 3500);
+  }
+  function refreshPeerStatus() {
+    $('chatInput').placeholder = conn && conn.open ? 'Mesaj yaz…' : 'Mesaj yaz… (bağlanınca gönderilir)';
+  }
   function sendChatMsg(m) { signal({ type: 'chat', id: m.id, text: m.text, t: m.t }); m.status = 'sent'; }
   // Bağlantı (yeniden) açılınca bekleyen mesajları gönder
   function chatOnConnect() {
     refreshPeerStatus();
     let changed = false;
-    for (const m of chat) if (m.who === 'me' && m.status === 'pending') { sendChatMsg(m); changed = true; }
+    // İletildi onayı gelmemiş her mesajı (yolda kaybolmuş olabilir) tekrar gönder; karşı taraf kimlikten tanıyıp çiftlemez
+    for (const m of chat) if (m.who === 'me' && (m.status === 'pending' || m.status === 'sent')) { sendChatMsg(m); changed = true; }
     if (changed) { saveChat(); renderChat(); }
-    if (chatOpen()) sendReadReceipts();
+    sendReadReceipts();
   }
+  // Video üstünde göründüğü için gelen mesaj okunmuş sayılır (sayfa açıksa)
   function sendReadReceipts() {
+    if (document.visibilityState !== 'visible') return;
     const ids = chat.filter((m) => m.who === 'them' && !m.readSent).map((m) => m.id);
     if (!ids.length || !(conn && conn.open)) return;
     signal({ type: 'chat-read', ids });
     for (const m of chat) if (ids.includes(m.id)) m.readSent = true;
     saveChat();
   }
+  document.addEventListener('visibilitychange', () => { if (room) sendReadReceipts(); });
   function onChatMessage(msg) {
-    const text = String(msg.text || '').slice(0, 1000);
+    const text = String(msg.text || '').slice(0, 500);
     if (!text) return;
     if (!chat.some((m) => m.id === msg.id)) {
-      chat.push({ id: msg.id || newId(), text, who: 'them', t: Number(msg.t) || Date.now() });
-      if (!chatOpen()) { unread++; $('chatBadge').textContent = unread; $('chatBadge').classList.remove('hidden'); }
+      chat.push({ id: msg.id || newId(), text, who: 'them', t: Number(msg.t) || Date.now(), shownAt: Date.now() });
       saveChat(); renderChat();
     }
     signal({ type: 'chat-ack', id: msg.id });
-    if (chatOpen()) sendReadReceipts();
-    clearTimeout(typingTimer); refreshPeerStatus();
+    sendReadReceipts();
+    showTyping(false);
   }
   function onChatAck(ids, status) {
     let changed = false;
     for (const m of chat) {
-      if (m.who === 'me' && ids.includes(m.id) && m.status !== 'read' && !(status === 'delivered' && m.status === 'read')) { m.status = status; changed = true; }
+      if (m.who === 'me' && ids.includes(m.id) && m.status !== 'read') { m.status = status; changed = true; }
     }
     if (changed) { saveChat(); renderChat(); }
   }
-  $('chatBtn').onclick = () => {
-    $('chat').classList.toggle('hidden');
-    if (chatOpen()) {
-      unread = 0; $('chatBadge').classList.add('hidden');
-      refreshPeerStatus(); renderChat(); sendReadReceipts();
-      $('chatLog').scrollTop = $('chatLog').scrollHeight;
-      $('chatInput').focus();
-    }
-  };
-  $('chatClose').onclick = () => $('chat').classList.add('hidden');
+  function setChatOpen(on) {
+    $('chat').classList.toggle('open', on);
+    $('chatForm').classList.toggle('hidden', !on);
+    $('chatBtn').classList.toggle('on', on);
+    renderChat();
+    if (on) { refreshPeerStatus(); $('chatInput').focus(); }
+  }
+  $('chatBtn').onclick = () => setChatOpen(!chatOpen());
   $('chatInput').addEventListener('input', () => {
     $('chatSend').classList.toggle('ready', !!$('chatInput').value.trim());
     if (Date.now() - lastTypingSent > 2500 && $('chatInput').value) { lastTypingSent = Date.now(); signal({ type: 'typing' }); }
   });
+  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') setChatOpen(false); });
   $('chatForm').onsubmit = (e) => {
     e.preventDefault();
-    const text = $('chatInput').value.trim().slice(0, 1000);
+    const text = $('chatInput').value.trim().slice(0, 500);
     if (!text) return;
-    const m = { id: newId(), text, who: 'me', t: Date.now(), status: 'pending' };
+    const m = { id: newId(), text, who: 'me', t: Date.now(), status: 'pending', shownAt: Date.now() };
     if (conn && conn.open) sendChatMsg(m);
     chat.push(m);
     saveChat(); renderChat();
     $('chatInput').value = ''; $('chatSend').classList.remove('ready');
-    $('chatLog').scrollTop = $('chatLog').scrollHeight;
     $('chatInput').focus();
   };
   $('profile').onchange = (e) => {

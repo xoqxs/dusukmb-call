@@ -84,6 +84,7 @@ window.Enhancer = (() => {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
         gl.uniform2f(uTexel, 1 / vw, 1 / vh);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        lastDraw = performance.now();
         if (++frame % 30 === 0) { gl.finish(); api.lastMs = performance.now() - t0; }
       }
       schedule();
@@ -92,8 +93,22 @@ window.Enhancer = (() => {
       handle = useRvfc ? video.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
     }
     function start() {
-      if (!api.enabled && api.enabledOnce !== false) setEnabled(true);
+      // Kullanıcı kapattıysa açma; açıksa ama döngü durmuşsa (yeniden bağlanma sonrası) yeniden başlat
+      if (api.enabledOnce === false) return;
+      if (!api.enabled) { setEnabled(true); return; }
+      if (!running) { running = true; schedule(); }
     }
+    // Bekçi: video kare üretiyor ama çizim takıldıysa (bazı telefonlarda kaynak değişince olur) yeniden başlat
+    let lastDraw = 0;
+    setInterval(() => {
+      if (!api.enabled || !running || video.readyState < 2 || !video.videoWidth) return;
+      if (performance.now() - lastDraw > 1500) {
+        if (handle != null) { try { useRvfc ? video.cancelVideoFrameCallback(handle) : cancelAnimationFrame(handle); } catch {} handle = null; }
+        handle = requestAnimationFrame(draw); // bir kez rAF ile dürt, sonra normal döngüye döner
+      }
+    }, 1000);
+    api.isRunning = () => running;
+    api.lastDrawAgo = () => performance.now() - lastDraw;
     function stop() {
       running = false;
       if (handle != null) { useRvfc ? video.cancelVideoFrameCallback(handle) : cancelAnimationFrame(handle); handle = null; }
