@@ -3,11 +3,15 @@
   // Bit hızları "kablodaki" toplamı ~hedefe oturtacak şekilde seçildi (RTP/UDP başlıkları ~15-20 kbps ekler)
   const PROFILES = {
     // Hedefler telefon başına TOPLAM (gönderilen + alınan)
-    // (Chrome videoyu 30 kbps altına indirmiyor; daha düşüğü için "sadece ses")
+    // (Chrome videoyu 30 kbps altına indirmiyor; altı için fotoğraf modu kullanılır)
     ses:    { audioOnly: true, abr: 10000 },                     // ~15 MB/saat
+    // 30 kbps altı: tarayıcı videoyu bu kadar kısamıyor, kamera küçük fotoğraflar olarak gönderilir
+    endusuk:  { snap: true, w: 160, h: 120, fps: 1, vbr: 8000,  abr: 8000 },  // ~21 MB/saat
+    cokdusuk: { snap: true, w: 240, h: 180, fps: 2, vbr: 16000, abr: 8000 },  // ~28 MB/saat
     normal: { w: 240, h: 180, fps: 12, vbr: 32000, abr: 10000 }, // ~47 MB/saat
     iyi:    { w: 320, h: 240, fps: 15, vbr: 70000, abr: 16000 }, // ~85 MB/saat
     hd:     { w: 1280, h: 720, fps: 24, vbr: 900000, abr: 24000, capW: 1280, capH: 720 }, // 720p, ~800 MB/saat
+    ozel:   { w: 240, h: 180, fps: 12, vbr: 32000, abr: 10000 },  // kullanıcı ayarlar
   };
   const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -19,7 +23,8 @@
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
-  let statsTimer = null, callStart = 0, prevStats = null, leaving = false;
+  let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null;
+  function resetHourly() { hourBase = null; if ($('sHour')) $('sHour').textContent = 'ölçülüyor…'; }
   window.__dusukmb = { get pc() { return pc; } }; // hata ayıklama için
   const enhancer = window.Enhancer ? window.Enhancer.create(remoteVideo, remoteCanvas) : null;
 
@@ -107,7 +112,7 @@
   function connectToA() {
     if (!peer || peer.destroyed || leaving) return;
     if (conn && conn.open) return;
-    attachConn(peer.connect(otherId, { serialization: 'json', reliable: true }));
+    attachConn(peer.connect(otherId, { serialization: 'binary', reliable: true }));
   }
   function attachConn(c) {
     if (conn && conn !== c) { try { conn.close(); } catch {} }
@@ -144,7 +149,7 @@
         await flushIce();
         {
           const ans = await pc.createAnswer();
-          ans.sdp = mungeOpus(ans.sdp, PROFILES[profile].abr);
+          ans.sdp = mungeSdp(ans.sdp);
           await pc.setLocalDescription(ans);
           signal({ type: 'answer', sdp: ans.sdp });
         }
@@ -161,7 +166,11 @@
         setCodec(msg.value, false);
         break;
       case 'profile':
-        if (PROFILES[msg.value]) { profile = msg.value; $('profile').value = profile; applyProfile(); }
+        if (msg.custom) Object.assign(PROFILES.ozel, msg.custom);
+        if (PROFILES[msg.value]) { profile = msg.value; $('profile').value = profile; syncCustomUi(); applyProfile(); }
+        break;
+      case 'frame':
+        showSnap(msg);
         break;
       case 'chat':
         addChat(String(msg.text || '').slice(0, 1000), 'them');
@@ -200,7 +209,7 @@
         if (track.kind === 'video') preferCodecs(tr);
       }
     }
-    pc.onicecandidate = (e) => { if (e.candidate) signal({ type: 'ice', candidate: e.candidate }); };
+    pc.onicecandidate = (e) => { if (e.candidate) signal({ type: 'ice', candidate: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {
       if (remoteVideo.srcObject !== e.streams[0]) {
         remoteVideo.srcObject = e.streams[0];
@@ -225,14 +234,14 @@
   async function makeOffer(iceRestart = false) {
     await ensurePc();
     const offer = await pc.createOffer({ iceRestart });
-    offer.sdp = mungeOpus(offer.sdp, PROFILES[profile].abr);
+    offer.sdp = mungeSdp(offer.sdp);
     await pc.setLocalDescription(offer);
     signal({ type: 'offer', sdp: offer.sdp });
   }
 
   function resetPc() {
     if (pc) { pc.close(); pc = null; }
-    pendingIce = []; remoteVideo.srcObject = null; callStart = 0; prevStats = null;
+    pendingIce = []; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null;
     if (enhancer) enhancer.stop();
     stopStats();
   }
@@ -265,28 +274,36 @@
     return sdp.replace(m[0], `${m[0]}\r\na=fmtp:${pt} ${want}`);
   }
 
+  function mungeSdp(sdp) { return mungeOpus(sdp, PROFILES[profile].abr); }
+
   // getParameters/setParameters çağrıları üst üste binmesin diye sıraya al
   let profileQueue = Promise.resolve();
   function applyProfile() { profileQueue = profileQueue.then(applyProfileNow, applyProfileNow); return profileQueue; }
 
   async function applyProfileNow() {
     const p = PROFILES[profile];
+    resetHourly();
+    const snap = !p.audioOnly && (p.snap || p.vbr < 30000);
     const vt = localStream && localStream.getVideoTracks()[0];
     if (vt && !p.audioOnly) {
-      // HD için kamerayı 1280×720 aç; diğer profillerde 480×360'a dön (pil ve işlemci için)
-      const capW = p.capW || 480, capH = p.capH || 360;
-      const wantFps = Math.max(p.fps, 15);
+      // Kamerayı en az 480×360 aç (HD için 1280×720); küçültmeyi kodlayıcı yapar
+      const capW = p.capW || Math.max(480, p.w), capH = p.capH || Math.max(360, p.h);
+      const wantFps = Math.max(Math.ceil(p.fps), 15);
       try { await vt.applyConstraints({ width: { ideal: capW }, height: { ideal: capH }, frameRate: { ideal: wantFps, max: wantFps } }); } catch {}
     }
     localVideo.classList.toggle('dim', !!p.audioOnly);
-    if (pc && pc.connectionState === 'connected') setStatus(p.audioOnly ? '🔈 Sadece ses modu' : '');
+    if (snap) startSnap(p); else stopSnap();
+    if (!snap) $('remoteSnap').classList.add('hidden');
+    if (pc && pc.connectionState === 'connected') {
+      setStatus(p.audioOnly ? '🔈 Sadece ses modu' : '');
+    }
     if (!pc) return;
     for (const tr of pc.getTransceivers()) {
       const s = tr.sender;
       const kind = tr.receiver.track && tr.receiver.track.kind;
       if (kind === 'video') {
-        // Sadece ses: kamerayı göndermeyi tamamen durdur (siyah kare bile gitmesin)
-        if (p.audioOnly) { if (s.track) { try { await s.replaceTrack(null); } catch {} } continue; }
+        // Sadece ses / fotoğraf modu: video akışını tamamen durdur (siyah kare bile gitmesin)
+        if (p.audioOnly || snap) { if (s.track) { try { await s.replaceTrack(null); } catch {} } continue; }
         if (!s.track && vt) { try { await s.replaceTrack(vt); } catch {} }
       }
       if (!s.track) continue;
@@ -305,6 +322,62 @@
       }
       try { await s.setParameters(params); } catch (err) { console.warn('setParameters', err); }
     }
+  }
+
+  // ---------- Fotoğraf modu (30 kbps altı) ----------
+  // Video yerine belirli aralıklarla küçük bir fotoğraf gönderilir; kalite hedef veri miktarına göre kendini ayarlar.
+  const snapCanvas = document.createElement('canvas');
+  const snapCtx = snapCanvas.getContext('2d');
+  const SNAP_TYPE = (() => {
+    try { const c = document.createElement('canvas'); c.width = c.height = 2; return c.toDataURL('image/webp').startsWith('data:image/webp') ? 'image/webp' : 'image/jpeg'; }
+    catch { return 'image/jpeg'; }
+  })();
+  let snapTimer = null, snapQ = 0.5, snapBusy = false, snapTx = 0, snapRx = 0, snapKey = '', snapUrl = null, lastSnapAt = 0;
+  function startSnap(p) {
+    const key = `${p.w}x${p.h}@${p.fps}/${p.vbr}`;
+    if (snapTimer && key === snapKey) return;
+    stopSnap();
+    snapKey = key;
+    const fps = snapFps(p);
+    const target = p.vbr / 8 / fps; // fotoğraf başına hedef bayt
+    snapTimer = setInterval(() => sendSnap(p, target), 1000 / fps);
+  }
+  // Fotoğraf başına en az ~1,5 KB kalsın; yoksa kare hızını düşür (daha küçüğü okunmaz ve hedefi aşar)
+  function snapFps(p) { return Math.max(0.25, Math.min(p.fps, p.vbr / 8 / 1500)); }
+  function stopSnap() { clearInterval(snapTimer); snapTimer = null; snapKey = ''; }
+  function sendSnap(p, target) {
+    if (snapBusy || !(conn && conn.open) || !localVideo.videoWidth) return;
+    const vt = localStream && localStream.getVideoTracks()[0];
+    if (!vt || !vt.enabled) return;
+    snapBusy = true;
+    const vw = localVideo.videoWidth, vh = localVideo.videoHeight;
+    const portrait = vh > vw;
+    const cw = portrait ? p.h : p.w, ch = portrait ? p.w : p.h;
+    if (snapCanvas.width !== cw || snapCanvas.height !== ch) { snapCanvas.width = cw; snapCanvas.height = ch; }
+    const sc = Math.max(cw / vw, ch / vh);
+    snapCtx.drawImage(localVideo, (cw - vw * sc) / 2, (ch - vh * sc) / 2, vw * sc, vh * sc);
+    snapCanvas.toBlob(async (b) => {
+      try {
+        if (!b || !(conn && conn.open)) return;
+        const buf = await b.arrayBuffer();
+        conn.send({ type: 'frame', data: buf, mime: b.type });
+        snapTx += buf.byteLength;
+        if (buf.byteLength > target * 1.1) snapQ = Math.max(0.05, snapQ - 0.05);
+        else if (buf.byteLength < target * 0.8) snapQ = Math.min(0.92, snapQ + 0.03);
+      } catch (e) { console.warn('foto', e); }
+      finally { snapBusy = false; }
+    }, SNAP_TYPE, snapQ);
+  }
+  function showSnap(msg) {
+    if (!msg.data) return;
+    const blob = new Blob([msg.data], { type: msg.mime || 'image/jpeg' });
+    snapRx += blob.size;
+    lastSnapAt = Date.now();
+    const url = URL.createObjectURL(blob);
+    const img = $('remoteSnap');
+    img.onload = () => { if (snapUrl && snapUrl !== url) URL.revokeObjectURL(snapUrl); snapUrl = url; };
+    img.src = url;
+    img.classList.remove('hidden');
   }
 
   // ---------- İstatistik ----------
@@ -331,6 +404,7 @@
       }
     });
     if (!pair) return;
+    if (Date.now() - lastSnapAt < 5000) res = `Fotoğraf modu ${$('remoteSnap').naturalWidth}×${$('remoteSnap').naturalHeight}`;
     const now = Date.now();
     // Bazı tarayıcılar bağlantı sayacını güncellemiyor; medya sayaçlarıyla da hesapla, büyük olanı al
     let txR = 0, rxR = 0;
@@ -338,6 +412,7 @@
       if (s.type === 'outbound-rtp') txR += (s.bytesSent || 0) + (s.headerBytesSent || 0);
       if (s.type === 'inbound-rtp') rxR += (s.bytesReceived || 0) + (s.headerBytesReceived || 0);
     });
+    txR += snapTx; rxR += snapRx;
     const tx = Math.max(pair.bytesSent || 0, txR), rx = Math.max(pair.bytesReceived || 0, rxR);
     if (prevStats) {
       const dt = now - prevStats.t;
@@ -352,8 +427,13 @@
     $('sCodec').textContent = codec;
     const elapsed = Math.max(1, (now - callStart) / 1000);
     $('sTotal').textContent = `${mb(tx + rx)} (${Math.floor(elapsed / 60)} dk)`;
-    if (elapsed > 20) {
-      $('sHour').textContent = `${Math.round((tx + rx) / elapsed * 3600 / 1e6)} MB/sa (gönd. ${Math.round(tx / elapsed * 3600 / 1e6)} · alınan ${Math.round(rx / elapsed * 3600 / 1e6)})`;
+    // Saatlik tahmin: ayar her değiştiğinde sıfırlanır, sadece mevcut ayarın tüketimini gösterir
+    if (!hourBase) hourBase = { t: now, tx, rx };
+    const hEl = (now - hourBase.t) / 1000;
+    if (hEl >= 10) {
+      const perH = (b) => Math.round(b / hEl * 3600 / 1e6);
+      const dtx = tx - hourBase.tx, drx = rx - hourBase.rx;
+      $('sHour').textContent = `${perH(dtx + drx)} MB/sa (gönd. ${perH(dtx)} · alınan ${perH(drx)})`;
     } else $('sHour').textContent = 'ölçülüyor…';
     $('sGpu').textContent = enhancer && enhancer.enabled ? (enhancer.lastMs ? enhancer.lastMs.toFixed(1) + ' ms/kare' : '-') : 'kapalı';
   }
@@ -404,7 +484,81 @@
     addChat(text, 'me');
     $('chatInput').value = '';
   };
-  $('profile').onchange = (e) => { profile = e.target.value; applyProfile(); signal({ type: 'profile', value: profile }); };
+  $('profile').onchange = (e) => {
+    profile = e.target.value;
+    syncCustomUi();
+    applyProfile();
+    signal({ type: 'profile', value: profile, custom: profile === 'ozel' ? PROFILES.ozel : undefined });
+  };
+
+  // ---------- Özel ayar: fps ve bit hızı kaydırma çubukları ----------
+  const FPS_STEPS = [0.5, 1, 2, 3, 5, 8, 10, 12, 15, 20, 24, 30];
+  const RES_STEPS = [[160, 120], [192, 144], [240, 180], [320, 240], [480, 360], [640, 480], [960, 540], [1280, 720]];
+  const kbpsFromSlider = (x) => Math.round(5 * Math.pow(300, x / 100));          // 5 … 1500 kbps
+  const sliderFromKbps = (k) => Math.round(100 * Math.log(k / 5) / Math.log(300));
+  // Seçilen bit hızı ve fps için netliği koruyan en büyük çözünürlük
+  function autoRes(vbr, fps, snap) {
+    const need = snap ? 0.9 : 0.07; // piksel başına bit (fotoğraf / video)
+    let best = RES_STEPS[0];
+    for (const r of RES_STEPS) if (vbr / (r[0] * r[1] * fps) >= need) best = r;
+    return best;
+  }
+  function autoAudio(vbr) { return vbr < 30000 ? 8000 : vbr < 200000 ? 10000 : vbr < 600000 ? 16000 : 24000; }
+  function estimate(p) {
+    if (p.audioOnly) return (p.abr / 1000 + 6) * 0.9;
+    const snap = p.snap || p.vbr < 30000;
+    const v = snap ? p.vbr : Math.max(p.vbr, 30000);
+    return (p.abr / 1000 + v / 1000 + 6 + (snap ? 1 : p.fps * 0.35)) * 2 * 0.45; // telefon başına MB/saat
+  }
+  function buildCustom(fps, vbr) {
+    const snap = vbr < 30000;
+    const [w, h] = autoRes(vbr, snap ? Math.max(0.25, Math.min(fps, vbr / 8 / 1500)) : fps, snap);
+    return { w, h, fps, vbr, abr: autoAudio(vbr), capW: w > 480 ? w : undefined, capH: w > 480 ? h : undefined };
+  }
+  function describe(p) {
+    if (p.audioOnly) return `≈ ${Math.round(estimate(p))} MB/saat · sadece ses`;
+    const snap = p.snap || p.vbr < 30000;
+    const bpp = p.vbr / (p.w * p.h * (snap ? snapFps(p) : p.fps));
+    const q = snap ? (bpp < 0.6 ? 'düşük' : bpp < 1.2 ? 'orta' : 'iyi') : (bpp < 0.04 ? 'düşük' : bpp < 0.08 ? 'orta' : 'iyi');
+    const f = snap ? snapFps(p) : p.fps;
+    const fTxt = f < p.fps ? ` · ${+f.toFixed(2)} kare/sn'ye düşürüldü` : '';
+    return `≈ ${Math.round(estimate(p))} MB/saat · ${p.w}×${p.h} · netlik ${q}${snap ? ' · fotoğraf modu' : ''}${fTxt}`;
+  }
+  function syncCustomUi() {
+    const p = PROFILES[profile];
+    $('custom').classList.toggle('hidden', profile !== 'ozel');
+    if (!p.audioOnly) {
+      $('fpsRange').value = Math.max(0, FPS_STEPS.indexOf(p.fps) !== -1 ? FPS_STEPS.indexOf(p.fps) : FPS_STEPS.findIndex((f) => f >= p.fps));
+      $('bitRange').value = sliderFromKbps(p.vbr / 1000);
+    }
+    $('fpsVal').textContent = p.audioOnly ? '-' : `${p.fps} kare/sn`;
+    $('bitVal').textContent = p.audioOnly ? '-' : `${Math.round(p.vbr / 1000)} kbps`;
+    $('estimate').textContent = describe(p);
+  }
+  let customTimer = null;
+  function onCustomInput() {
+    const fps = FPS_STEPS[Number($('fpsRange').value)];
+    const vbr = kbpsFromSlider(Number($('bitRange').value)) * 1000;
+    PROFILES.ozel = buildCustom(fps, vbr);
+    profile = 'ozel';
+    $('profile').value = 'ozel';
+    syncCustomUi();
+    // Kaydırırken her adımda değil, parmak durunca uygula
+    clearTimeout(customTimer);
+    customTimer = setTimeout(() => { applyProfile(); signal({ type: 'profile', value: 'ozel', custom: PROFILES.ozel }); }, 350);
+  }
+  $('fpsRange').max = FPS_STEPS.length - 1;
+  $('fpsRange').oninput = onCustomInput;
+  $('bitRange').oninput = onCustomInput;
+  $('customBtn').onclick = () => {
+    // Mevcut profilden başlayarak özel ayara geç
+    const p = PROFILES[profile];
+    if (profile !== 'ozel' && !p.audioOnly) PROFILES.ozel = buildCustom(p.fps, p.vbr);
+    profile = 'ozel'; $('profile').value = 'ozel';
+    syncCustomUi(); applyProfile();
+    signal({ type: 'profile', value: 'ozel', custom: PROFILES.ozel });
+  };
+  syncCustomUi();
 
   // ---------- Codec seçimi ----------
   function supports(mime) {
@@ -415,6 +569,7 @@
     if (!['auto', 'av1', 'vp9', 'h264'].includes(value)) return;
     codecPref = value;
     $('codec').value = value;
+    resetHourly();
     if (value === 'av1' && !supports('video/AV1')) {
       setStatus('Bu cihaz AV1 desteklemiyor, en yakın codec kullanılacak');
       setTimeout(() => setStatus(''), 3000);

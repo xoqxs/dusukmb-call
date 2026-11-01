@@ -3,20 +3,29 @@
 Tarayıcıdan, kurulum gerektirmeyen, **saatte ~50 MB** (tek yön) görüntülü görüşme.
 Alıcı tarafta GPU ile 2x büyütme ve netleştirme yapılır.
 
-## Test sonuçları (iki tarayıcı, profil başına 25 sn)
+## Görüntü seçenekleri (📊 panelinde)
 
-Rakamlar **telefon başına toplam** (gönderilen + alınan):
+Rakamlar **telefon başına toplam** (gönderilen + alınan), saat başına:
 
-| Profil | Görüntü | Ölçülen hız (toplam) | Saatlik veri |
-|---|---|---|---|
-| **Normal** (varsayılan) | 240×180 @ 12 fps | ~105 kbps | **~47 MB** |
-| İyi | 320×240 @ 15 fps | ~190 kbps | ~85 MB |
-| Sadece ses | kamera kapalı | ~35 kbps | ~15 MB |
+| Profil | Görüntü | Veri |
+|---|---|---|
+| En düşük | 160×120 fotoğraf, ~1 kare/sn | ~15-21 MB |
+| Çok düşük | 240×180 fotoğraf, ~1,3 kare/sn | ~20-28 MB |
+| Sadece ses | kamera kapalı | ~15 MB |
+| **Normal** (varsayılan) | 240×180 video, 12 kare/sn | ~40-47 MB |
+| İyi | 320×240 video, 15 kare/sn | ~85 MB |
+| HD 720p | 1280×720 video, 24 kare/sn | ~800 MB |
+| **Özel ayar** | kare hızı ve bit hızı kaydırma çubuğuyla | 5-1500 kbps |
 
-- Codec: VP9 (iPhone varsa H.264). Ses: Opus mono, 10 kbps, 60 ms paket (başlık yükü 3 kat az), sessizlikte veri kesilir.
-- Alıcı telefon gelen 240×180 görüntüyü ekranda 3 kata kadar büyütüp netleştirir.
-- Tarayıcılar videoyu 30 kbps altına indirmiyor; bu yüzden Normal'den düşüğü "Sadece ses".
-- Profil bir tarafta değişince iki tarafta birden uygulanır.
+- **Fotoğraf modu:** Tarayıcılar videoyu 30 kbps altına indirmiyor. Daha düşük seçilince kamera görüntüsü
+  video yerine küçük fotoğraflar (WebP/JPEG) olarak veri kanalından gider; kalite hedef veriye göre kendini ayarlar.
+  Fotoğraf başına en az ~1,5 KB kalacak şekilde kare hızı otomatik düşürülür.
+- **Özel ayar:** Çözünürlük ve ses kalitesi, seçilen kare hızı ve bit hızına göre otomatik seçilir.
+  Panel tahmini MB/saat ve netliği anında gösterir.
+- **Saatlik ölçüm** her ayar değişikliğinde sıfırlanır; sadece o anki ayarın tüketimini gösterir.
+- **Codec:** Otomatik (Android'de VP9, iPhone'da H.264), AV1, VP9, H.264. Desteklemeyen telefonda otomatik geri dönüş.
+- **Sohbet (💬):** Mesajlar doğrudan telefondan telefona gider, sunucuda saklanmaz.
+- Profil ve codec bir tarafta değişince iki tarafta birden uygulanır.
 
 ## Canlı sürüm
 
