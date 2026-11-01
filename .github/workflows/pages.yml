@@ -1,0 +1,39 @@
+name: Siteyi yayınla
+on:
+  push:
+    branches: [main]
+    paths: ["public/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Takılı kalan eski yayınları iptal et
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in d7bb1cbdbc18c4a151a4316c8d84ab5c842bb2f9 $(git ls-remote origin gh-pages | cut -f1); do
+            curl -s -o /dev/null -w "$id -> %{http_code}\n" -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/pages/deployments/$id/cancel" || true
+          done
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4
