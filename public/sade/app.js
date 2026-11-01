@@ -1170,20 +1170,16 @@
       });
     } catch {}
   }
+  // Arka plandayken zili service worker çalar: bildirim arama sürdükçe her 3 sn yeniden gelir (ses + titreşim)
   async function showCallNote(r) {
-    if (notifyState() !== 'granted' || document.visibilityState === 'visible') return;
+    if (notifyState() !== 'granted') return;
     try {
-      const reg = swReg || await navigator.serviceWorker.getRegistration();
-      if (!reg) return;
-      await reg.showNotification(`📞 @${r.from} arıyor`, {
-        body: 'Görüntülü arama · açmak için dokun', tag: 'dusukmb-call', renotify: true, requireInteraction: true,
-        icon: 'icon.svg', badge: 'icon.svg', vibrate: [700, 400, 700, 400, 700, 400, 700],
-        actions: [{ action: 'accept', title: '📞 Aç' }, { action: 'decline', title: '✕ Reddet' }],
-        data: { ring: r, url: location.origin + location.pathname },
-      });
+      const reg = swReg || await navigator.serviceWorker.ready;
+      if (reg && reg.active) reg.active.postMessage({ t: 'ring', ring: { id: r.id, from: r.from, room: r.room } });
     } catch (e) { console.warn(e); }
   }
   async function closeCallNote() {
+    try { const reg = swReg || await navigator.serviceWorker.getRegistration(); if (reg && reg.active) reg.active.postMessage({ t: 'stopring' }); } catch {}
     try { const reg = swReg || await navigator.serviceWorker.getRegistration(); if (reg) (await reg.getNotifications({ tag: 'dusukmb-call' })).forEach((n) => n.close()); } catch {}
   }
   async function answerRing(r, accept) {
