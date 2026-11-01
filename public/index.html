@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
   <main id="lobby" class="screen">
@@ -69,9 +69,10 @@
       <video id="localVideo" playsinline autoplay muted></video>
       <!-- Kameralar kapalıyken: sesli görüşme ekranı -->
       <div id="voiceView" class="voice-view hidden">
-        <div class="voice-ring">🔈</div>
+        <div id="voiceRing" class="voice-ring">🔈</div>
         <b>Sesli görüşme</b>
         <span id="voiceSub">Kameralar kapalı · veri tasarrufu</span>
+        <span id="audioDiag" class="audio-diag"></span>
         <button id="earBtn" class="ear-btn">🌑 Kulağa götür (ekranı karart)</button>
       </div>
       <button id="camCta" class="cam-cta">📷 Kamerayı aç</button>
@@ -94,6 +95,7 @@
 
     <div class="controls">
       <button id="micBtn" title="Mikrofon">🎤</button>
+      <button id="spkBtn" class="hidden" title="Ahize">📞</button>
       <button id="camBtn" title="Kamera">📷</button>
       <button id="setBtn" title="Ayarlar">⚙️</button>
       <button id="chatBtn" title="Mesaj">💬<span id="chatBadge" class="badge hidden">0</span></button>
@@ -119,6 +121,7 @@
           <button id="enhanceBtn" class="btn on">✨ Netleştirme</button>
           <button id="notifyBtn" class="btn">🔔 Bildirim</button>
         </div>
+        <button id="soundTest" class="btn ghost-btn">🔊 Ses testi (duyuyor musun?)</button>
         <p id="iosTip" class="tip hidden">iPhone'da arka plan bildirimi için: Safari'de <b>Paylaş → Ana Ekrana Ekle</b>, sonra uygulamayı oradan aç.</p>
         <button id="statsBtn" class="link">Gelişmiş ▾</button>
       </div>
@@ -209,6 +212,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>
