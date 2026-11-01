@@ -76,3 +76,4 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
 .custom input[type=range] { width: 100%; accent-color: #2f7cf6; height: 28px; }
 .estimate { color: #9fc2ff; font-size: 12px; margin-bottom: 4px; justify-content: flex-start !important; }
 .link { background: none; border: 0; color: #9fc2ff; font-size: 13px; padding: 2px 0; cursor: pointer; }
+.rooms-link { margin-top: 18px; padding: 14px; border-radius: 12px; border: 1px solid #22314d; color: #c3d2ea; text-decoration: none; text-align: center; }

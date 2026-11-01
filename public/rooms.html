@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>DusukMB · Topluluk</title>
+  <link rel="stylesheet" href="rooms.css?v=2">
+</head>
+<body>
+  <!-- 1) Giriş: topluluk kodu + takma ad -->
+  <main id="entry" class="screen">
+    <h1>Topluluk</h1>
+    <p class="sub">Görüntülü odalar · odada en fazla 4 kişi · kamera kapatılınca sesle devam</p>
+    <label for="community">Topluluk kodu</label>
+    <input id="community" autocomplete="off" placeholder="örn: aile, gemi42" maxlength="40">
+    <label for="nick">Takma adın</label>
+    <input id="nick" autocomplete="nickname" placeholder="örn: Kadir" maxlength="24">
+    <label for="pass" id="passLabel">Parola <small>(varsa)</small></label>
+    <input id="pass" type="password" autocomplete="off" placeholder="Parola" maxlength="64">
+    <button id="enterBtn" class="primary">Topluluğa gir</button>
+    <p class="hint">Davet linkine tıklayan kişi parolayla birlikte doğrudan odaya girer.</p>
+    <p id="entryErr" class="error"></p>
+    <a class="back-link" href="./">← 1'e 1 görüşme</a>
+  </main>
+
+  <!-- 2) Oda listesi -->
+  <main id="community-view" class="screen hidden">
+    <header class="bar">
+      <button id="exitBtn" class="icon" title="Çık">←</button>
+      <div class="title"><b id="cName">-</b><small id="cOnline">bağlanıyor…</small></div>
+      <button id="lockBtn" class="icon" title="Parola">🔓</button>
+      <button id="shareBtn" class="icon" title="Davet linki">🔗</button>
+    </header>
+    <div id="lockPanel" class="lock-panel hidden">
+      <p id="lockInfo">Parola koyarsan sadece parolayı (ya da davet linkini) bilenler girebilir.</p>
+      <div class="row2">
+        <input id="newPass" type="text" autocomplete="off" placeholder="Yeni parola" maxlength="64">
+        <button id="genPass" type="button" title="Rastgele parola">🎲</button>
+      </div>
+      <div class="row2">
+        <button id="savePass" type="button" class="primary small">Parolayı kaydet</button>
+        <button id="clearPass" type="button" class="ghost-btn">Parolayı kaldır</button>
+      </div>
+    </div>
+    <div id="roomList" class="room-list"></div>
+    <form id="createForm" class="create" autocomplete="off">
+      <input id="newRoom" placeholder="Yeni oda adı" maxlength="32">
+      <button type="submit">+ Oda</button>
+    </form>
+    <div id="lobbyPeople" class="lobby-people"></div>
+  </main>
+
+  <!-- 3) Oda içi -->
+  <main id="room-view" class="screen hidden">
+    <header class="bar">
+      <button id="leaveBtn" class="icon" title="Odalara dön">←</button>
+      <div class="title"><b id="rName">-</b><small id="rInfo">-</small></div>
+      <span id="rData" class="data" title="Bu telefonun saatlik veri tahmini">-</span>
+      <button id="roomShareBtn" class="icon" title="Bu odaya davet linki">🔗</button>
+    </header>
+    <div id="tiles" class="tiles"></div>
+    <div id="rstatus" class="status hidden"></div>
+    <div id="rchat" class="chat-ov">
+      <div id="rchatLog" class="chat-log"></div>
+      <form id="rchatForm" class="chat-form hidden" autocomplete="off">
+        <input id="rchatInput" maxlength="500" placeholder="Odaya mesaj…" enterkeyhint="send">
+        <button type="submit">➤</button>
+      </form>
+    </div>
+    <nav class="controls">
+      <button id="micBtn" title="Mikrofon">🎤</button>
+      <button id="camBtn" title="Kamera">📷</button>
+      <select id="quality" title="Görüntü kalitesi">
+        <option value="dusuk">Düşük</option>
+        <option value="normal" selected>Normal</option>
+        <option value="iyi">İyi</option>
+      </select>
+      <button id="chatBtn" title="Mesaj">💬<span id="chatBadge" class="badge hidden">0</span></button>
+      <button id="hangBtn" class="danger" title="Odadan çık">✕</button>
+    </nav>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="rooms.js?v=4"></script>
+</body>
+</html>

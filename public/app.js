@@ -64,6 +64,15 @@
     signalList = [cfg.signal, CLOUD].filter(Boolean);
     sigIdx = 0; signalCfg = signalList[0];
     iceConfig = { iceServers: cfg.iceServers || [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] };
+    // Kendi sunucumuz TURN bilgisi veriyorsa ekle (önce P2P denenir, olmazsa tarayıcı kendiliğinden TURN'e geçer)
+    if (cfg.signal) {
+      try {
+        const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 3000);
+        const r = await fetch(`${cfg.signal.secure ? 'https' : 'http'}://${cfg.signal.host}:${cfg.signal.port}/ice`, { signal: ctl.signal, cache: 'no-store' });
+        clearTimeout(tm);
+        if (r.ok) { const j = await r.json(); if (Array.isArray(j.iceServers) && j.iceServers.length) iceConfig = { iceServers: j.iceServers }; }
+      } catch {}
+    }
     startSignal();
   }
 

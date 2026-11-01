@@ -1,0 +1,100 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #0b1220; color: #e6edf7; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select { font: inherit; }
+.hidden { display: none !important; }
+
+/* Giriş */
+#entry { max-width: 380px; margin: 0 auto; padding: 10vh 24px 24px; display: flex; flex-direction: column; gap: 10px; }
+#entry h1 { margin: 0; font-size: 28px; }
+.sub { margin: 0 0 12px; color: #8da2c0; }
+label { font-size: 14px; color: #8da2c0; margin-top: 4px; }
+input { padding: 13px 14px; border-radius: 12px; border: 1px solid #22314d; background: #111a2e; color: inherit; font-size: 17px; outline: none; }
+input:focus { border-color: #2f7cf6; }
+.primary { margin-top: 8px; padding: 14px; border-radius: 12px; border: 0; background: #2f7cf6; color: #fff; font-weight: 600; font-size: 16px; cursor: pointer; }
+.hint { font-size: 13px; color: #6c80a0; }
+.error { color: #ff8a8a; font-size: 14px; min-height: 1em; }
+.back-link { color: #8da2c0; text-decoration: none; font-size: 14px; margin-top: 8px; }
+
+/* Üst çubuk */
+.bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: max(10px, env(safe-area-inset-top)) 10px 10px; background: #0f1830; border-bottom: 1px solid #1a2640; }
+.bar .title { flex: 1; display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.bar .title b { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar .title small { color: #8da2c0; font-size: 12.5px; }
+.icon { width: 40px; height: 40px; border-radius: 20px; border: 0; background: #1a2640; color: #fff; font-size: 18px; cursor: pointer; flex: none; }
+.data { font-size: 12px; color: #9fc2ff; white-space: nowrap; }
+
+/* Oda listesi */
+#community-view { max-width: 640px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+.room-list { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.room { padding: 12px 14px; border-radius: 14px; background: #111a2e; border: 1px solid #1a2640; }
+.room.mine { border-color: #2f7cf6; }
+.room-head { display: flex; align-items: center; gap: 8px; }
+.room-head .rn { flex: 1; font-weight: 600; font-size: 16px; }
+.room-head .rn::before { content: '🔊 '; }
+.room-head .cnt { color: #8da2c0; font-size: 13px; }
+.room-head button { padding: 7px 14px; border-radius: 10px; border: 0; background: #2f7cf6; color: #fff; font-weight: 600; cursor: pointer; }
+.room-head button.ghost { background: transparent; color: #8da2c0; padding: 7px 8px; }
+.room-head button:disabled { background: #1a2640; color: #6c80a0; cursor: default; }
+.people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.person { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: #0b1220; font-size: 13.5px; border: 2px solid transparent; transition: border-color 0.15s; }
+.person .av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #0b1220; }
+.person.speaking { border-color: #3ddc84; }
+.create { display: flex; gap: 8px; padding: 0 12px 12px; }
+.create input { flex: 1; min-width: 0; padding: 11px 14px; font-size: 16px; }
+.create button { padding: 0 16px; border-radius: 12px; border: 1px solid #22314d; background: #111a2e; color: #c3d2ea; cursor: pointer; }
+.lobby-people { padding: 0 14px 20px; color: #6c80a0; font-size: 13px; }
+
+/* Oda içi */
+#room-view { position: fixed; inset: 0; display: flex; flex-direction: column; background: #000; }
+.tiles { flex: 1; display: grid; gap: 6px; padding: 6px; grid-template-columns: 1fr; grid-auto-rows: 1fr; min-height: 0; }
+.tiles.n2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+.tiles.n3, .tiles.n4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+@media (orientation: landscape) { .tiles.n2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; } }
+.tile { position: relative; border-radius: 14px; overflow: hidden; background: #111a2e; border: 3px solid transparent; transition: border-color 0.15s; min-height: 0; }
+.tile.speaking { border-color: #3ddc84; }
+.tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+.tile.me video { transform: scaleX(-1); }
+.tile.nocam video { opacity: 0; }
+.tile .avatar { position: absolute; inset: 0; display: none; place-items: center; }
+.tile.nocam .avatar { display: grid; }
+.tile .avatar span { width: 34%; max-width: 110px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-size: clamp(22px, 7vw, 44px); font-weight: 700; color: #0b1220; }
+.tile .label { position: absolute; left: 8px; bottom: 8px; padding: 3px 10px; border-radius: 10px; background: rgba(0,0,0,0.55); font-size: 13px; }
+.tile .conn { position: absolute; right: 8px; top: 8px; padding: 2px 8px; border-radius: 8px; background: rgba(0,0,0,0.55); font-size: 11.5px; color: #ffd279; }
+
+.status { position: absolute; z-index: 4; left: 50%; top: 45%; transform: translate(-50%, -50%); padding: 10px 16px; border-radius: 999px; background: rgba(17, 26, 46, 0.9); font-size: 15px; text-align: center; max-width: 85vw; }
+
+.controls { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 10px 8px max(10px, env(safe-area-inset-bottom)); background: #0b1220; }
+.controls button { position: relative; min-width: 48px; height: 48px; border-radius: 24px; border: 0; background: #1a2640; color: #fff; font-size: 18px; cursor: pointer; }
+.controls button.off { background: #4a2330; }
+.controls button.on { background: #2f7cf6; }
+.controls button.danger { background: #e5484d; }
+.controls select { height: 40px; border-radius: 12px; border: 1px solid #22314d; background: #111a2e; color: inherit; padding: 0 8px; }
+.badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #e5484d; font-size: 11px; line-height: 18px; font-weight: 700; }
+
+/* Oda sohbeti: video üstünde, YouTube canlı sohbeti gibi */
+.chat-ov { position: absolute; z-index: 4; left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.chat-log { display: flex; flex-direction: column; gap: 4px; max-height: 36vh; overflow-y: auto; scrollbar-width: none; padding-right: 25%; }
+.chat-log::-webkit-scrollbar { display: none; }
+.chat-ov.open .chat-log { pointer-events: auto; padding-right: 0; }
+.cmsg { align-self: flex-start; max-width: 100%; padding: 5px 10px; border-radius: 14px; background: rgba(0,0,0,0.55);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; font-size: 14.5px; line-height: 1.35; word-wrap: break-word; white-space: pre-wrap; animation: cin 0.2s ease-out; }
+.cmsg b { margin-right: 6px; }
+.cmsg.fade { animation: cin 0.2s ease-out, cout 0.6s ease-in forwards; animation-delay: 0s, var(--fade, 7s); }
+@keyframes cin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes cout { to { opacity: 0; } }
+.chat-form { display: flex; gap: 6px; pointer-events: auto; }
+.chat-form input { flex: 1; min-width: 0; padding: 11px 16px; border-radius: 22px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.18); }
+.chat-form button { width: 44px; height: 44px; border-radius: 50%; border: 0; background: #2f7cf6; color: #fff; font-size: 18px; }
+
+.toast { position: fixed; z-index: 20; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); padding: 10px 16px; border-radius: 12px; background: #1a2640; color: #fff; font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.4); max-width: 90vw; text-align: center; }
+
+/* Parola paneli */
+.lock-panel { margin: 10px 12px 0; padding: 12px; border-radius: 14px; background: #111a2e; border: 1px solid #22314d; display: flex; flex-direction: column; gap: 8px; }
+.lock-panel p { margin: 0; color: #8da2c0; font-size: 13.5px; }
+.lock-panel .row2 { display: flex; gap: 8px; }
+.lock-panel .row2 input { flex: 1; min-width: 0; padding: 10px 12px; font-size: 16px; }
+.lock-panel .row2 button { padding: 0 14px; border-radius: 12px; border: 1px solid #22314d; background: #0b1220; color: #fff; cursor: pointer; }
+.primary.small { margin: 0; padding: 10px 14px; font-size: 15px; flex: 1; }
+.ghost-btn { flex: 1; }
+label small { color: #6c80a0; }
+.icon.locked { background: #2f7cf6; }

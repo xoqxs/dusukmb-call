@@ -1,16 +1,30 @@
-# DusukMB Call - Cloudflare tanıştırma (sinyal) sunucusu
-# PeerJS sunucu protokolüyle uyumlu: uygulamadaki PeerJS kütüphanesi doğrudan bağlanır.
+# DusukMB Call - Cloudflare: site + tanıştırma sunucusu + topluluk/odalar + TURN kimlik bilgisi
 name = "dusukmb-signal"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
+
+# Site dosyaları (public/) aynı adresten sunulur; eşleşmeyen yollar (sinyal, odalar, /ice) Worker'a gider
+[assets]
+directory = "../public"
+not_found_handling = "none"
 
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "SignalRoom"
 
+[[durable_objects.bindings]]
+name = "COMMUNITY"
+class_name = "Community"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SignalRoom"]
 
-workers_dev = true
-preview_urls = false
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Community"]
+
+# TURN için (Cloudflare panelinde TURN anahtarı oluşturulunca gizli değişken olarak eklenir):
+#   TURN_KEY_ID, TURN_KEY_API_TOKEN
