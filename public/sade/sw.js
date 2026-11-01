@@ -24,7 +24,7 @@ function callNote(ring, n) {
   return self.registration.showNotification(`📞 Gelen arama · @${ring.from}`, {
     body: n ? `Görüntülü arıyor… (${n * 3} sn)` : 'Görüntülü arıyor… açmak için dokun',
     tag: 'dusukmb-call', renotify: true, requireInteraction: true, silent: false,
-    icon: 'icon.svg', badge: 'icon.svg', vibrate: [800, 300, 800, 300, 800],
+    icon: 'icon-192.png', badge: 'icon-192.png', vibrate: [800, 300, 800, 300, 800],
     actions: [{ action: 'accept', title: '📞 Aç' }, { action: 'decline', title: '✕ Reddet' }],
     data: { ring, url: self.registration.scope },
   });
@@ -51,7 +51,7 @@ async function ringLoop(ring) {
   const open = await self.registration.getNotifications({ tag: 'dusukmb-call' });
   open.forEach((x) => x.close());
   if (!st.stop && Date.now() - t0 >= 3000) {
-    await self.registration.showNotification('DusukMB Call', { body: `Cevapsız arama · @${ring.from}`, tag: 'dusukmb-missed', icon: 'icon.svg', badge: 'icon.svg' });
+    await self.registration.showNotification('DusukMB Call', { body: `Cevapsız arama · @${ring.from}`, tag: 'dusukmb-missed', icon: 'icon-192.png', badge: 'icon-192.png' });
   }
 }
 function stopRing() { if (ringing) { ringing.stop = true; ringing = null; } }
@@ -69,7 +69,7 @@ self.addEventListener('push', (e) => {
     const ring = me && me.api ? await fetchPending(me) : null;
     if (!ring) {
       if (ringing) return;
-      await self.registration.showNotification('DusukMB Call', { body: 'Cevapsız arama', tag: 'dusukmb-missed', icon: 'icon.svg', badge: 'icon.svg' });
+      await self.registration.showNotification('DusukMB Call', { body: 'Cevapsız arama', tag: 'dusukmb-missed', icon: 'icon-192.png', badge: 'icon-192.png' });
       return;
     }
     await ringLoop(ring);
