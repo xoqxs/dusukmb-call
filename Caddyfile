@@ -1,0 +1,5 @@
+# Ücretsiz otomatik HTTPS (Let's Encrypt). Alan adın yoksa DOMAIN=1-2-3-4.sslip.io kullan.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:3000
+}

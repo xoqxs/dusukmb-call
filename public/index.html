@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>DusukMB Call</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="lobby" class="screen">
+    <h1>DusukMB Call</h1>
+    <p class="sub">Saatte ~50 MB ile görüntülü görüşme (toplam)</p>
+    <label for="room">Oda kodu</label>
+    <input id="room" autocomplete="off" placeholder="örn: gemi42">
+    <button id="joinBtn">Görüşmeye katıl</button>
+    <button id="randomBtn" class="ghost">Yeni oda oluştur</button>
+    <p class="hint">Aynı oda kodunu karşı tarafa gönder. Linki paylaşman yeterli.</p>
+  </main>
+
+  <main id="call" class="screen hidden">
+    <div class="stage">
+      <canvas id="remoteCanvas"></canvas>
+      <video id="remoteVideo" playsinline autoplay></video>
+      <video id="localVideo" playsinline autoplay muted></video>
+      <div id="status" class="status">Bağlanıyor…</div>
+    </div>
+
+    <div class="controls">
+      <button id="micBtn" title="Mikrofon">🎤</button>
+      <button id="camBtn" title="Kamera">📷</button>
+      <button id="enhanceBtn" class="on" title="Netleştirme">✨</button>
+      <button id="statsBtn" title="İstatistik">📊</button>
+      <button id="shareBtn" title="Linki paylaş">🔗</button>
+      <button id="hangBtn" class="danger" title="Kapat">✕</button>
+    </div>
+
+    <section id="stats" class="stats hidden">
+      <div class="row"><span>Profil</span>
+        <select id="profile">
+          <option value="normal" selected>Normal (~45 MB/sa)</option>
+          <option value="iyi">İyi (~85 MB/sa)</option>
+          <option value="ses">Sadece ses (~15 MB/sa)</option>
+        </select>
+      </div>
+      <div class="row"><span>Giden</span><b id="sOut">-</b></div>
+      <div class="row"><span>Gelen</span><b id="sIn">-</b></div>
+      <div class="row"><span>Karşı görüntü</span><b id="sRes">-</b></div>
+      <div class="row"><span>Codec</span><b id="sCodec">-</b></div>
+      <div class="row"><span>Bağlantı</span><b id="sPath">-</b></div>
+      <div class="row"><span>Bu görüşme</span><b id="sTotal">-</b></div>
+      <div class="row"><span>Saatlik</span><b id="sHour">-</b></div>
+      <div class="row"><span>Netleştirme</span><b id="sGpu">-</b></div>
+    </section>
+  </main>
+
+  <script src="enhance.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
