@@ -4,7 +4,7 @@ button, input, select { font: inherit; }
 .hidden { display: none !important; }
 
 /* Lobi */
-#lobby { max-width: 380px; margin: 0 auto; padding: 14vh 24px 24px; display: flex; flex-direction: column; gap: 12px; }
+#lobby { max-width: 400px; margin: 0 auto; padding: max(6vh, env(safe-area-inset-top)) 20px 28px; display: flex; flex-direction: column; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 12px; }
 #lobby h1 { margin: 0; font-size: 28px; letter-spacing: -0.5px; }
 .sub { margin: 0 0 18px; color: #8da2c0; line-height: 1.45; }
@@ -118,3 +118,39 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
 .custom label b { color: #e6edf7; float: right; }
 .custom input[type=range] { width: 100%; accent-color: #2f7cf6; height: 28px; padding: 0; }
 .estimate { color: #9fc2ff; font-size: 12px; margin-bottom: 4px; justify-content: flex-start !important; }
+
+/* Kullanıcı adı / arama kartları */
+.card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 16px; background: #111a2e; border: 1px solid #1c2a45; }
+.card label { font-size: 13px; color: #8da2c0; }
+.card .hint { margin: 0; }
+.card input { padding: 12px; font-size: 17px; }
+#lobby .card button { padding: 12px 14px; border-radius: 12px; white-space: nowrap; }
+#lobby button.green { background: #1fa855; }
+#lobby button.mini { padding: 6px 12px; font-size: 13px; background: #1f2d4a; color: #c3d2ea; border-radius: 999px; margin-left: auto; }
+#lobby button.mini.wide { margin: 0; padding: 10px; font-size: 14px; background: #2f7cf6; color: #fff; border-radius: 12px; }
+.me-row { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.me-state { color: #4ade80; font-size: 13px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #4b5a75; flex: none; }
+.dot.on { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,0.2); }
+.dot.push { background: #ffc94d; }
+.contacts { display: flex; flex-wrap: wrap; gap: 6px; }
+.contacts:empty { display: none; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: #1a2640; color: #e6edf7; font-size: 14px; border: 0; cursor: pointer; }
+#lobby .chip { padding: 7px 12px; border-radius: 999px; background: #1a2640; font-weight: 500; font-size: 14px; }
+.or { display: flex; align-items: center; gap: 10px; color: #4b5a75; font-size: 12px; margin: 6px 0 -2px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: #1c2a45; }
+#lobby button.big { padding: 16px; font-size: 17px; }
+
+/* Gelen arama ekranı */
+.incoming { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 35%, #1b3a73, #0b1220 70%); }
+.in-box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.in-avatar { width: 110px; height: 110px; border-radius: 50%; background: #2f7cf6; display: flex; align-items: center; justify-content: center;
+  font-size: 48px; font-weight: 700; animation: pulse 1.4s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(47,124,246,0.6); } 100% { box-shadow: 0 0 0 36px rgba(47,124,246,0); } }
+.in-box b { font-size: 28px; margin-top: 14px; }
+.in-sub { color: #9fb3d4; }
+.in-btns { display: flex; gap: 70px; margin-top: 60px; }
+.in-btns button { width: 74px; height: 74px; border-radius: 50%; border: 0; color: #fff; font-size: 30px; cursor: pointer; }
+.in-no { background: #e5484d; }
+.in-yes { background: #1fa855; animation: pulse 1.4s ease-out infinite; }
