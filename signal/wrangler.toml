@@ -11,3 +11,6 @@ class_name = "SignalRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SignalRoom"]
+
+workers_dev = true
+preview_urls = false
