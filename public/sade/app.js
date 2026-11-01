@@ -24,6 +24,12 @@
   const lobby = $('lobby'), call = $('call');
   const localVideo = $('localVideo'), remoteVideo = $('remoteVideo'), remoteCanvas = $('remoteCanvas');
   const statusEl = $('status');
+  const remoteAudio = $('remoteAudio');
+  // Tarayıcı dokunuş olmadan sesi başlatmazsa (davet linkiyle doğrudan girişte) "Sesi aç" düğmesi göster
+  function playAudio() {
+    remoteAudio.play().then(() => $('tapAudio').classList.add('hidden'))
+      .catch(() => $('tapAudio').classList.remove('hidden'));
+  }
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
@@ -334,10 +340,17 @@
       preferCodecs(pc.addTransceiver(vt0 || 'video', { direction: 'sendrecv', streams: [localStream] }));
     }
     pc.onicecandidate = (e) => { if (e.candidate) signal({ type: 'ice', candidate: e.candidate.toJSON() }); };
+    // Ses ayrı bir <audio> ile çalınır: video öğesi görüntü karesi gelmeden sesi de başlatmıyor
+    // (kameralar kapalıyken ses hiç duyulmuyordu)
     pc.ontrack = (e) => {
-      if (remoteVideo.srcObject !== e.streams[0]) {
-        remoteVideo.srcObject = e.streams[0];
-        remoteVideo.play().catch(() => setStatus('Sesi açmak için ekrana dokun'));
+      const t = e.track;
+      if (t.kind === 'audio') {
+        remoteAudio.srcObject = new MediaStream([t]);
+        playAudio();
+      } else {
+        remoteVideo.muted = true;
+        remoteVideo.srcObject = new MediaStream([t]);
+        remoteVideo.play().catch(() => {});
         if (enhancer) enhancer.start();
       }
     };
@@ -376,7 +389,7 @@
   function resetPc() {
     if (pc) { pc.close(); pc = null; }
     carried += lastTotal; lastTotal = 0; snapTx = 0; snapRx = 0; prevLoss = null;
-    pendingIce = []; sentMode = null; remoteSendsVideo = false; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
+    pendingIce = []; sentMode = null; remoteSendsVideo = false; remoteVideo.srcObject = null; remoteAudio.srcObject = null; $('tapAudio').classList.add('hidden'); callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
     if (enhancer) enhancer.stop();
     stopStats();
   }
@@ -672,7 +685,26 @@
     $('camCta').classList.toggle('hidden', camOn || (peerPresent && !show));
     $('voiceSub').textContent = camOn ? 'Karşı tarafın kamerası kapalı' : 'Kameralar kapalı · veri tasarrufu';
   }
-  setInterval(syncVoiceView, 1500);
+  setInterval(() => { syncVoiceView(); if (room) keepAwake(); }, 1500);
+
+  // ---------- Kulak modu ----------
+  // Tarayıcılar yakınlık sensörüne erişemiyor; bu yüzden telefonu kulağa götürmeden önce ekranı karartan,
+  // yanağın dokunuşlarını yok sayan siyah ekran. Açmak için iki kez dokun.
+  // Ayrıca: ses modunda ekran açık tutulmadığı için telefon kendi süresinde kendiliğinden kararır.
+  function setEarMode(on) {
+    $('earMode').classList.toggle('hidden', !on);
+    if (on) { try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch {} }
+    else if (document.fullscreenElement) { try { document.exitFullscreen(); } catch {} }
+  }
+  $('earBtn').onclick = () => setEarMode(true);
+  let earTap = 0;
+  $('earMode').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - earTap < 400) { setEarMode(false); earTap = 0; } else earTap = now;
+  });
+  ['touchstart', 'touchmove', 'contextmenu'].forEach((ev) => $('earMode').addEventListener(ev, (e) => { if (ev !== 'touchstart') e.preventDefault(); }, { passive: ev === 'touchstart' }));
+  $('tapAudio').onclick = (e) => { e.stopPropagation(); playAudio(); };
   $('camBtn').onclick = () => setCam(!camOn);
   $('camCta').onclick = () => setCam(true);
   $('camSuggest').onclick = () => setCam(true);
@@ -803,8 +835,12 @@
   // ---------- Telefonda sağlamlık ----------
   // Ekran kararmasın (görüşme sürerken)
   let wakeLock = null;
+  // Sesli görüşmede ekran açık tutulmaz: telefonun kendi süresiyle kararır, görüşme sürer.
+  // Görüntü varken (kamera açık ya da karşıdan görüntü geliyor) ekran açık kalır.
   async function keepAwake() {
     if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || leaving) return;
+    const videoOn = camOn || (peerPresent && remoteSendsVideo);
+    if (!videoOn) { if (wakeLock && !wakeLock.released) { try { await wakeLock.release(); } catch {} } return; }
     if (wakeLock && !wakeLock.released) return;
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
   }
@@ -1089,7 +1125,10 @@
     else if (pc && ['failed', 'disconnected'].includes(pc.connectionState)) recover('uygulamaya dönüldü');
   });
   // iOS: otomatik oynatma engellenirse ilk dokunuşta başlat
-  document.addEventListener('click', () => { if (remoteVideo.paused && remoteVideo.srcObject) remoteVideo.play().catch(() => {}); });
+  document.addEventListener('click', () => {
+    if (remoteVideo.paused && remoteVideo.srcObject) remoteVideo.play().catch(() => {});
+    if (remoteAudio.paused && remoteAudio.srcObject) playAudio();
+  });
 
   if (enhancer && !enhancer.supported) $('enhanceBtn').classList.remove('on');
   // ---------- Kullanıcı adıyla arama ----------
