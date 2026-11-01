@@ -33,7 +33,7 @@
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
-  let camOn = false;
+  let camOn = false, remoteMicOff = false;
   const CAM = { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } };
   let remoteHidden = false, remoteSendsVideo = false, sentMode = null, peerPresent = false, userProfile = 'normal', autoDown = false;
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null, frozenSince = 0, lastFrames = -1;
@@ -83,8 +83,9 @@
         return;
       }
     }
-    syncCamUi();
     localStream.getTracks().forEach(watchTrack);
+    syncCamUi();
+    findRoutes().then(() => setSpeaker(camOn, false)); // sesli başlarken ahize, kamerayla başlarken hoparlör
     localVideo.srcObject = localStream;
     loadChat();
     lobby.classList.add('hidden');
@@ -281,6 +282,9 @@
       case 'typing':
         showTyping(true);
         break;
+      case 'mic':
+        remoteMicOff = !msg.on;
+        break;
       case 'mode':
         if (msg.video && !remoteSendsVideo && peerPresent && !camOn) {
           // Karşı taraf kamerasını açtı: zorlamadan öner
@@ -365,6 +369,7 @@
         if (!callStart) callStart = Date.now();
         frozenSince = 0; startStats(); applyProfile(); keepAwake();
         signal({ type: 'vis', hidden: document.visibilityState === 'hidden' });
+        { const at = localStream.getAudioTracks()[0]; signal({ type: 'mic', on: !!(at && at.enabled) }); }
         if (!peerPresent) { peerPresent = true; closeSheets(); alertUser('joined'); }
       }
       else if (s === 'disconnected') {
@@ -641,6 +646,92 @@
   $('micBtn').onclick = (e) => {
     const t = localStream.getAudioTracks()[0]; t.enabled = !t.enabled;
     e.currentTarget.classList.toggle('off', !t.enabled);
+    signal({ type: 'mic', on: t.enabled });
+  };
+
+  // ---------- Ahize / hoparlör ----------
+  // Tarayıcıda ses çıkışı doğrudan seçilemiyor. Android Chrome mikrofon listesinde "Headset earpiece" ve
+  // "Speakerphone" girişlerini gösterir; hangisi seçilirse ses de oradan çıkar. Sesli görüşme ahizeden,
+  // kamera açılınca hoparlörden başlar (WhatsApp gibi); düğmeyle elle değiştirilebilir.
+  let routes = null, speakerOn = false, speakerManual = false;
+  async function findRoutes() {
+    if (routes) return routes;
+    try {
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+      const ear = devs.find((d) => /earpiece|receiver|ahize/i.test(d.label));
+      const spk = devs.find((d) => /speaker|hoparl/i.test(d.label));
+      const outs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput');
+      routes = { ear: ear && ear.deviceId, spk: spk && spk.deviceId, sink: !!remoteAudio.setSinkId && outs.length > 1 ? outs : null };
+    } catch { routes = {}; }
+    $('spkBtn').classList.toggle('hidden', !(routes.ear && routes.spk) && !routes.sink);
+    return routes;
+  }
+  function micConstraints() {
+    const c = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+    if (routes && routes.ear && routes.spk) c.deviceId = { exact: speakerOn ? routes.spk : routes.ear };
+    return c;
+  }
+  async function setSpeaker(on, manual) {
+    if (manual) speakerManual = true;
+    const r = await findRoutes();
+    speakerOn = on;
+    $('spkBtn').classList.toggle('on', on);
+    $('spkBtn').textContent = on ? '🔊' : '📞';
+    $('spkBtn').title = on ? 'Hoparlör (ahizeye almak için dokun)' : 'Ahize (hoparlöre almak için dokun)';
+    if (r.ear && r.spk) {
+      const old = localStream.getAudioTracks()[0];
+      const want = on ? r.spk : r.ear;
+      if (old && old.getSettings().deviceId === want) return;
+      try {
+        const ns = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
+        const nt = ns.getAudioTracks()[0];
+        nt.enabled = old ? old.enabled : true;
+        if (old) { old._byUser = true; localStream.removeTrack(old); }
+        localStream.addTrack(nt); watchTrack(nt);
+        if (pc) for (const tr of pc.getTransceivers()) if (tr.receiver.track && tr.receiver.track.kind === 'audio') { try { await tr.sender.replaceTrack(nt); } catch {} }
+        if (old) old.stop();
+      } catch (e) { console.warn('ses yolu', e); }
+    } else if (r.sink) {
+      const d = r.sink.find((x) => on ? /speaker|hoparl/i.test(x.label) : /earpiece|receiver|ahize/i.test(x.label));
+      if (d) { try { await remoteAudio.setSinkId(d.deviceId); } catch {} }
+    }
+    if (manual) toast(on ? '🔊 Hoparlör' : '📞 Ahize (telefonu kulağına götür)');
+  }
+  $('spkBtn').onclick = () => setSpeaker(!speakerOn, true);
+  // Kamera açılınca hoparlöre, kapanınca ahizeye (elle seçilmediyse)
+  function autoRoute() { if (!speakerManual && speakerOn !== camOn) setSpeaker(camOn, false); }
+
+  // ---------- Ses göstergesi ve test ----------
+  // Karşıdan ses geliyor mu (ağ) ve çalınıyor mu (telefon) ayrı ayrı görünsün
+  async function audioDiag() {
+    if (!pc || !peerPresent) { $('audioDiag').textContent = ''; return; }
+    let level = 0, bytes = 0;
+    try { (await pc.getStats()).forEach((s) => { if (s.type === 'inbound-rtp' && s.kind === 'audio') { level = s.audioLevel || 0; bytes = s.bytesReceived || 0; } }); } catch {}
+    const prev = audioDiag.prev || 0; audioDiag.prev = bytes;
+    const arriving = bytes > prev;
+    let txt;
+    if (remoteMicOff) txt = '🔇 Karşı tarafın mikrofonu kapalı';
+    else if (!arriving) txt = '⚠️ Karşıdan ses verisi gelmiyor (bağlantı)';
+    else if (remoteAudio.paused) txt = '⚠️ Ses geliyor ama çalınmıyor: ekrana dokun';
+    else txt = level > 0.02 ? '🔊 Karşı taraf konuşuyor' : '🟢 Ses bağlı';
+    $('audioDiag').textContent = txt;
+    $('voiceRing').style.transform = `scale(${1 + Math.min(0.35, level * 2)})`;
+  }
+  setInterval(audioDiag, 700);
+  $('soundTest').onclick = () => {
+    // Görüşme sesinin çıktığı yerden kısa bir zil çal
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const dst = actx.createMediaStreamDestination();
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+      o.frequency.value = 660; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+      o.connect(g).connect(dst); o.start(t); o.stop(t + 0.95);
+      const a = new Audio(); a.srcObject = dst.stream;
+      if (remoteAudio.sinkId && a.setSinkId) a.setSinkId(remoteAudio.sinkId).catch(() => {});
+      a.play().catch(() => {});
+      setTimeout(() => { a.srcObject = null; }, 1500);
+      toast('Bip sesini duydun mu? Duymadıysan telefonun ses seviyesini aç (görüşme sırasında sesi yükselt tuşu)', 5000);
+    } catch {}
   };
   // ---------- Kamera aç/kapat ----------
   // Kapatınca kamera tamamen durur (ışık söner, pil ve veri harcanmaz); açınca yeniden başlatılır.
@@ -676,6 +767,7 @@
     $('camCta').classList.toggle('hidden', camOn);
     if (camOn) $('camSuggest').classList.add('hidden');
     syncVoiceView();
+    autoRoute();
   }
   // Karşıdan görüntü gelmiyorsa siyah ekran yerine "sesli görüşme" ekranı
   function syncVoiceView() {
@@ -854,7 +946,7 @@
       const old = kind === 'audio' ? localStream.getAudioTracks()[0] : localStream.getVideoTracks()[0];
       const wasEnabled = old ? old.enabled : true;
       const ns = await navigator.mediaDevices.getUserMedia(kind === 'audio'
-        ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }
+        ? { audio: micConstraints() }
         : { video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } } });
       const nt = ns.getTracks()[0];
       nt.enabled = wasEnabled;

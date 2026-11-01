@@ -40,8 +40,8 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
 .qbars.q2 i:nth-child(-n+2) { background: #ffc94d; }
 .qbars.q3 i { background: #4ade80; }
 
-.controls { display: flex; justify-content: center; gap: 8px; padding: 10px 8px max(10px, env(safe-area-inset-bottom)); background: #0b1220; }
-.controls button { flex: 0 1 auto; min-width: 48px; height: 52px; padding: 0 10px; border-radius: 26px; border: 0; background: #1a2640; color: #fff; font-size: 20px; cursor: pointer; }
+.controls { display: flex; justify-content: center; gap: 6px; padding: 10px 8px max(10px, env(safe-area-inset-bottom)); background: #0b1220; }
+.controls button { flex: 0 1 auto; min-width: 44px; height: 52px; padding: 0 8px; border-radius: 26px; border: 0; background: #1a2640; color: #fff; font-size: 20px; cursor: pointer; }
 .controls button.off { background: #4a2330; }
 .controls button.on { background: #2f7cf6; }
 .controls button.danger { background: #e5484d; }
@@ -189,3 +189,6 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
 .ear-mode span { margin-bottom: 40px; color: #222; font-size: 13px; }
 .tap-audio { position: absolute; z-index: 7; left: 50%; top: 30%; transform: translateX(-50%); padding: 14px 22px; border-radius: 999px; border: 0;
   background: #ffc94d; color: #1a1300; font-size: 16px; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+
+.audio-diag { margin-top: 6px; color: #c3d2ea !important; font-size: 14px; min-height: 18px; }
+.voice-ring { transition: transform 0.25s ease-out; }
