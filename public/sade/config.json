@@ -1,0 +1,10 @@
+{
+  "signal": {
+    "host": "dusukmb-signal.akadirpars.workers.dev",
+    "port": 443,
+    "secure": true,
+    "path": "/",
+    "key": "peerjs",
+    "name": "Cloudflare"
+  }
+}
