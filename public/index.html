@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1220">
   <link rel="manifest" href="manifest.webmanifest">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
   <main id="lobby" class="screen">
@@ -31,10 +31,20 @@
       <button id="micBtn" title="Mikrofon">🎤</button>
       <button id="camBtn" title="Kamera">📷</button>
       <button id="enhanceBtn" class="on" title="Netleştirme">✨</button>
+      <button id="chatBtn" title="Mesaj">💬<span id="chatBadge" class="badge hidden">0</span></button>
       <button id="statsBtn" title="İstatistik">📊</button>
       <button id="shareBtn" title="Linki paylaş">🔗</button>
       <button id="hangBtn" class="danger" title="Kapat">✕</button>
     </div>
+
+    <section id="chat" class="chat hidden">
+      <header><b>Mesajlar</b><button id="chatClose" type="button" title="Kapat">✕</button></header>
+      <div id="chatLog" class="chat-log"></div>
+      <form id="chatForm" class="chat-form" autocomplete="off">
+        <input id="chatInput" maxlength="1000" placeholder="Mesaj yaz…" enterkeyhint="send">
+        <button type="submit">Gönder</button>
+      </form>
+    </section>
 
     <section id="stats" class="stats hidden">
       <div class="row"><span>Profil</span>
@@ -57,6 +67,6 @@
 
   <script src="peerjs.min.js?v=1"></script>
   <script src="enhance.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

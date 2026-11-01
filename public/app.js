@@ -159,6 +159,9 @@
       case 'profile':
         if (PROFILES[msg.value]) { profile = msg.value; $('profile').value = profile; applyProfile(); }
         break;
+      case 'chat':
+        addChat(String(msg.text || '').slice(0, 1000), 'them');
+        break;
       case 'bye':
         setStatus('Karşı taraf ayrıldı. Bekleniyor…');
         resetPc();
@@ -360,6 +363,37 @@
     e.currentTarget.classList.toggle('on', enhancer.enabled);
   };
   $('statsBtn').onclick = () => $('stats').classList.toggle('hidden');
+
+  // ---------- Sohbet ----------
+  let unread = 0;
+  function addChat(text, who) {
+    if (!text) return;
+    const row = document.createElement('div');
+    row.className = 'msg ' + who;
+    row.textContent = text;
+    const time = document.createElement('small');
+    time.textContent = new Date().toTimeString().slice(0, 5);
+    row.appendChild(time);
+    $('chatLog').appendChild(row);
+    $('chatLog').scrollTop = $('chatLog').scrollHeight;
+    if (who === 'them' && $('chat').classList.contains('hidden')) {
+      unread++; $('chatBadge').textContent = unread; $('chatBadge').classList.remove('hidden');
+    }
+  }
+  $('chatBtn').onclick = () => {
+    $('chat').classList.toggle('hidden');
+    if (!$('chat').classList.contains('hidden')) { unread = 0; $('chatBadge').classList.add('hidden'); $('chatInput').focus(); }
+  };
+  $('chatClose').onclick = () => $('chat').classList.add('hidden');
+  $('chatForm').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('chatInput').value.trim();
+    if (!text) return;
+    if (!(conn && conn.open)) { addChat('Mesaj gönderilemedi: karşı taraf bağlı değil', 'sys'); return; }
+    signal({ type: 'chat', text: text.slice(0, 1000) });
+    addChat(text, 'me');
+    $('chatInput').value = '';
+  };
   $('profile').onchange = (e) => { profile = e.target.value; applyProfile(); signal({ type: 'profile', value: profile }); };
   $('shareBtn').onclick = async () => {
     const url = `${location.origin}${location.pathname}?oda=${encodeURIComponent(room)}`;
