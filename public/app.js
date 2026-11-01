@@ -59,7 +59,10 @@
     // Kendi sunucumuz varsa config.json'dan okunur; yoksa (GitHub Pages) ücretsiz PeerJS sinyal sunucusu kullanılır
     let cfg = {};
     try { const r = await fetch('config.json', { cache: 'no-store' }); if (r.ok) cfg = await r.json(); } catch {}
-    signalCfg = cfg.signal || { host: '0.peerjs.com', port: 443, secure: true, path: '/', key: 'peerjs' };
+    // Önce kendi sunucumuz (config.json), ulaşılamazsa herkese açık PeerJS sunucusu
+    const CLOUD = { host: '0.peerjs.com', port: 443, secure: true, path: '/', key: 'peerjs', name: 'PeerJS (yedek)' };
+    signalList = [cfg.signal, CLOUD].filter(Boolean);
+    sigIdx = 0; signalCfg = signalList[0];
     iceConfig = { iceServers: cfg.iceServers || [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] };
     startSignal();
   }
@@ -73,7 +76,7 @@
   // ---------- Sinyal (resmi PeerJS kütüphanesi) ----------
   // Odaya ilk giren "a", ikinci giren "b" kimliğini alır. "b", "a"ya küçük bir veri kanalı açar;
   // görüşme kurulum mesajları (offer/answer/ice) bu kanaldan gider. Görüntü/ses ayrı bağlantıdan akar.
-  let signalCfg, myRole = null, myId = '', otherId = '', peer = null, conn = null, retryTimer = null;
+  let signalCfg, signalList = [], sigIdx = 0, sigOpened = false, myRole = null, myId = '', otherId = '', peer = null, conn = null, retryTimer = null;
   let myToken = '', triedRoles = new Set(), fullTimer = null, fullSince = 0;
   function roomKey(r) {
     let h = 0x811c9dc5;
@@ -99,9 +102,19 @@
     myId = `${base}-${role}`; otherId = `${base}-${role === 'a' ? 'b' : 'a'}`;
     triedRoles.add(role);
     const c = signalCfg;
+    sigOpened = false;
+    // Sunucu 6 sn içinde yanıt vermezse sıradakine geç
+    clearTimeout(sigTimer);
+    sigTimer = setTimeout(() => { if (!sigOpened && peer === p && !leaving) switchSignal('zaman aşımı'); }, 6000);
     const p = new Peer(myId, { host: c.host, port: Number(c.port), secure: c.secure, path: c.path, key: c.key, token: myToken, config: iceConfig, debug: 0 });
     peer = p;
     p.on('open', () => {
+      sigOpened = true;
+      console.log('sinyal sunucusu:', c.name || c.host);
+      // Yedekteysek ve karşı tarafı bulamıyorsak (o asıl sunucuda olabilir) bir süre sonra asıl sunucuyu tekrar dene
+      if (sigIdx > 0) setTimeout(() => {
+        if (peer === p && !leaving && !(conn && conn.open)) { sigIdx = signalList.length - 1; switchSignal('asıl sunucuyu tekrar dene'); }
+      }, 25000);
       saveSess();
       clearTimeout(fullTimer); fullSince = 0;
       if (myRole === 'a') { if (!pc) setStatus('Karşı taraf bekleniyor… Linki paylaş 🔗'); }
@@ -120,12 +133,22 @@
         scheduleRetry(); // "a" henüz/artık yok
       } else if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected'].includes(e.type)) {
         if (leaving) return;
+        if (!sigOpened) { switchSignal(e.type); return; } // bu sunucuya hiç bağlanamadık: yedeğe geç
         if (!pc || pc.connectionState !== 'connected') setStatus('Sunucuya ulaşılamıyor, tekrar deneniyor…');
         clearTimeout(retryTimer);
         // Aynı rol ve anahtarla yeniden bağlan (kimlik kaybolmasın)
         retryTimer = setTimeout(() => { triedRoles = new Set(); connectSignal(myRole, myToken); }, 2500);
       } else console.warn('sinyal', e.type, e);
     });
+  }
+  let sigTimer = null;
+  function switchSignal(why) {
+    if (signalList.length < 2) { clearTimeout(retryTimer); retryTimer = setTimeout(() => connectSignal(myRole || 'a', myToken), 3000); return; }
+    sigIdx = (sigIdx + 1) % signalList.length;
+    signalCfg = signalList[sigIdx];
+    console.log('sinyal sunucusu değişiyor (' + why + ') →', signalCfg.name || signalCfg.host);
+    triedRoles = new Set();
+    connectSignal(myRole || 'a', myToken);
   }
   function scheduleRetry(ms = 3000) {
     clearTimeout(retryTimer);
