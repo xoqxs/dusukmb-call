@@ -33,7 +33,7 @@
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
-  let camOn = false, remoteMicOff = false;
+  let camOn = false, remoteMicOff = false, peerName = '', facing = 'user', unreadChat = 0;
   const CAM = { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } };
   let remoteHidden = false, remoteSendsVideo = false, sentMode = null, peerPresent = false, userProfile = 'normal', autoDown = false;
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null, frozenSince = 0, lastFrames = -1;
@@ -64,13 +64,13 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
   }
 
-  async function start(r) {
+  async function start(r, opts = {}) {
     if (!r) { $('room').focus(); return; }
     room = r;
     history.replaceState(null, '', `?oda=${encodeURIComponent(room)}`);
     // Görüşme sesle başlar; kamera kullanıcı isteyince açılır (ayarlardan "kamerayla başlasın" seçilebilir)
     const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
-    const wantCam = lsGet('dusukmb-camstart', false);
+    const wantCam = !!opts.video; // görüntülü arama kamerayla, sesli arama ahizeden başlar
     try {
       localStream = await navigator.mediaDevices.getUserMedia(wantCam ? { audio: AUDIO, video: CAM } : { audio: AUDIO });
       camOn = wantCam;
@@ -645,7 +645,8 @@
   // ---------- Kontroller ----------
   $('micBtn').onclick = (e) => {
     const t = localStream.getAudioTracks()[0]; t.enabled = !t.enabled;
-    e.currentTarget.classList.toggle('off', !t.enabled);
+    $('micBtn').classList.toggle('off', !t.enabled);
+    $('micBtn').querySelector('i').textContent = t.enabled ? '🎤' : '🔇';
     signal({ type: 'mic', on: t.enabled });
   };
 
@@ -685,8 +686,7 @@
     if (manual) speakerManual = true;
     const r = await findRoutes();
     speakerOn = on;
-    $('spkBtn').classList.toggle('on', on);
-    $('spkBtn').textContent = on ? '🔊' : '📞';
+    spkUi(on);
     $('spkBtn').title = on ? 'Hoparlör (ahizeye almak için dokun)' : 'Ahize (hoparlöre almak için dokun)';
     if (r.ear && r.spk) {
       const old = localStream.getAudioTracks()[0];
@@ -712,7 +712,7 @@
             if (pc) for (const tr of pc.getTransceivers()) if (tr.receiver.track && tr.receiver.track.kind === 'audio') { try { await tr.sender.replaceTrack(nt); } catch {} } } catch {}
         }
         if (manual) toast('Bu telefonda ' + (on ? 'hoparlöre' : 'ahizeye') + ' geçilemedi. ⚙️ → Gelişmiş\'teki "Ses aygıtları" satırını bana gönder', 6000);
-        speakerOn = !on; $('spkBtn').classList.toggle('on', !on); $('spkBtn').textContent = !on ? '🔊' : '📞';
+        speakerOn = !on; spkUi(!on);
         return;
       }
     } else if (r.sink) {
@@ -723,7 +723,15 @@
     }
     if (manual) toast(on ? '🔊 Hoparlör' : '📞 Ahize (telefonu kulağına götür)');
   }
+  function spkUi(on) {
+    $('spkBtn').classList.toggle('on', on);
+    $('spkBtn').querySelector('i').textContent = on ? '🔊' : '📞';
+    $('spkBtn').querySelector('span').textContent = on ? 'Hoparlör' : 'Ahize';
+  }
   $('spkBtn').onclick = () => setSpeaker(!speakerOn, true);
+  function syncUnread() {
+    for (const id of ['moreBadge', 'chatBadge']) { $(id).textContent = unreadChat; $(id).classList.toggle('hidden', !unreadChat); }
+  }
   // Kamera açılınca hoparlöre, kapanınca ahizeye (elle seçilmediyse)
   function autoRoute() { if (!speakerManual && speakerOn !== camOn) setSpeaker(camOn, false); }
 
@@ -741,7 +749,7 @@
     else if (remoteAudio.paused) txt = '⚠️ Ses geliyor ama çalınmıyor: ekrana dokun';
     else txt = level > 0.02 ? '🔊 Karşı taraf konuşuyor' : '🟢 Ses bağlı';
     $('audioDiag').textContent = txt;
-    $('voiceRing').style.transform = `scale(${1 + Math.min(0.35, level * 2)})`;
+    $('voiceRing').style.transform = `scale(${1 + Math.min(0.12, level)})`;
   }
   setInterval(audioDiag, 700);
   $('soundTest').onclick = () => {
@@ -787,10 +795,9 @@
     }
   }
   function syncCamUi() {
-    $('camBtn').classList.toggle('off', !camOn);
+    $('camBtn').classList.toggle('on', camOn);
     $('camBtn').title = camOn ? 'Kamerayı kapat' : 'Kamerayı aç';
     localVideo.classList.toggle('hidden', !camOn);
-    $('camCta').classList.toggle('hidden', camOn);
     if (camOn) $('camSuggest').classList.add('hidden');
     syncVoiceView();
     autoRoute();
@@ -799,8 +806,10 @@
   function syncVoiceView() {
     const show = !!pc && peerPresent && !remoteSendsVideo && Date.now() - lastSnapAt > 5000;
     $('voiceView').classList.toggle('hidden', !show);
-    // Büyük "Kamerayı aç" düğmesi karşı tarafın görüntüsünü kapatmasın: sadece görüntü yokken
-    $('camCta').classList.toggle('hidden', camOn || (peerPresent && !show));
+    $('voiceName').textContent = peerName ? '@' + peerName : 'Sesli görüşme';
+    $('voiceRing').textContent = peerName ? peerName[0].toUpperCase() : '🔈';
+    if (callStart && peerPresent) { const t = Math.floor((Date.now() - callStart) / 1000); $('voiceTime').textContent = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; }
+    else $('voiceTime').textContent = '';
     $('voiceSub').textContent = camOn ? 'Karşı tarafın kamerası kapalı' : 'Kameralar kapalı · veri tasarrufu';
   }
   setInterval(() => { syncVoiceView(); if (room) keepAwake(); }, 1500);
@@ -814,7 +823,7 @@
     if (on) { try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch {} }
     else if (document.fullscreenElement) { try { document.exitFullscreen(); } catch {} }
   }
-  $('earBtn').onclick = () => setEarMode(true);
+  $('earBtn').onclick = () => { closeSheets(); setEarMode(true); };
   let earTap = 0;
   $('earMode').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -824,10 +833,26 @@
   ['touchstart', 'touchmove', 'contextmenu'].forEach((ev) => $('earMode').addEventListener(ev, (e) => { if (ev !== 'touchstart') e.preventDefault(); }, { passive: ev === 'touchstart' }));
   $('tapAudio').onclick = (e) => { e.stopPropagation(); playAudio(); };
   $('camBtn').onclick = () => setCam(!camOn);
-  $('camCta').onclick = () => setCam(true);
   $('camSuggest').onclick = () => setCam(true);
-  $('camStart').checked = lsGet('dusukmb-camstart', false);
-  $('camStart').onchange = (e) => lsSet('dusukmb-camstart', e.target.checked);
+  // Diğer menüsü
+  $('moreBtn').onclick = () => { const open = !$('moreSheet').classList.contains('hidden'); closeSheets(); if (!open) $('moreSheet').classList.remove('hidden'); };
+  $('statsBtn2').onclick = () => { closeSheets(); $('stats').classList.remove('hidden'); showDevices(); };
+  $('flipBtn').onclick = async () => {
+    closeSheets();
+    if (!camOn) { toast('Önce kamerayı aç'); return; }
+    facing = facing === 'user' ? 'environment' : 'user';
+    CAM.facingMode = facing;
+    const old = localStream.getVideoTracks()[0];
+    try {
+      if (old) { old._byUser = true; localStream.removeTrack(old); old.stop(); }
+      const nt = (await navigator.mediaDevices.getUserMedia({ video: CAM })).getVideoTracks()[0];
+      localStream.addTrack(nt); watchTrack(nt);
+      localVideo.style.transform = facing === 'user' ? '' : 'none';
+      localVideo.srcObject = localStream; localVideo.play().catch(() => {});
+      if (pc) for (const tr of pc.getTransceivers()) if (tr.receiver.track && tr.receiver.track.kind === 'video' && tr.sender.track) { try { await tr.sender.replaceTrack(nt); } catch {} }
+      applyProfile();
+    } catch (e) { toast('Kamera çevrilemedi'); }
+  };
   $('enhanceBtn').onclick = (e) => {
     if (!enhancer || !enhancer.supported) { setStatus('Bu cihazda netleştirme desteklenmiyor'); return; }
     enhancer.setEnabled(!enhancer.enabled);
@@ -1080,6 +1105,7 @@
       chat.push({ id: msg.id || newId(), text, who: 'them', t: Number(msg.t) || Date.now(), shownAt: Date.now() });
       saveChat(); renderChat();
       alertUser('msg', text);
+      if (!chatOpen()) { unreadChat++; syncUnread(); }
     }
     signal({ type: 'chat-ack', id: msg.id });
     sendReadReceipts();
@@ -1095,7 +1121,7 @@
   function setChatOpen(on) {
     $('chat').classList.toggle('open', on);
     $('chatForm').classList.toggle('hidden', !on);
-    $('chatBtn').classList.toggle('on', on);
+    if (on) { closeSheets(); unreadChat = 0; syncUnread(); }
     renderChat();
     if (on) { refreshPeerStatus(); $('chatInput').focus(); }
   }
@@ -1375,8 +1401,9 @@
     if (inRing && inRing.id === r.id) return;
     // Başka bir görüşmedeyken: meşgul
     if (room) { answerRing(r, false); toast(`@${r.from} aradı (görüşmede olduğun için meşgul dendi)`, 4000); return; }
-    inRing = { id: r.id, from: r.from, room: r.room };
+    inRing = { id: r.id, from: r.from, room: r.room, video: !!r.video };
     $('inName').textContent = '@' + r.from;
+    $('inSub').textContent = r.video ? '📹 görüntülü arıyor…' : '📞 sesli arıyor…';
     $('inAvatar').textContent = (r.from[0] || '?').toUpperCase();
     $('incoming').classList.remove('hidden');
     const tickRing = () => { ringTone(); if (navigator.vibrate) { try { navigator.vibrate([700, 400, 700]); } catch {} } };
@@ -1407,7 +1434,7 @@
     if (notifyState() !== 'granted') return;
     try {
       const reg = swReg || await navigator.serviceWorker.ready;
-      if (reg && reg.active) reg.active.postMessage({ t: 'ring', ring: { id: r.id, from: r.from, room: r.room } });
+      if (reg && reg.active) reg.active.postMessage({ t: 'ring', ring: { id: r.id, from: r.from, room: r.room, video: !!r.video } });
     } catch (e) { console.warn(e); }
   }
   async function closeCallNote() {
@@ -1420,14 +1447,14 @@
     const res = await api('/phone/answer?' + nameQ(me.name), { token: me.token, id: r.id, accept });
     return !!res.ok;
   }
-  $('inYes').onclick = () => { const r = inRing; if (!r) return; answerRing(r, true); stopIncoming(); start(r.room); };
+  $('inYes').onclick = () => { const r = inRing; if (!r) return; answerRing(r, true); stopIncoming(); peerName = r.from; start(r.room, { video: r.video }); };
   $('inNo').onclick = () => { const r = inRing; if (!r) return; answerRing(r, false); stopIncoming(); };
   // Bildirimdeki düğmeler (sayfa zaten açıksa service worker buraya haber verir)
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', (e) => {
     const m = e.data || {};
     if (m.t !== 'notif' || !m.ring) return;
     if (m.action === 'decline') { answerRing(m.ring, false); stopIncoming(); return; }
-    if (m.action === 'accept') { answerRing(m.ring, true); stopIncoming(); if (!room) start(m.ring.room); return; }
+    if (m.action === 'accept') { answerRing(m.ring, true); stopIncoming(); if (!room) { peerName = m.ring.from; start(m.ring.room, { video: m.ring.video }); } return; }
     if (!room) incoming(m.ring); // bildirime dokundu: gelen arama ekranını göster
   });
 
@@ -1443,7 +1470,7 @@
       const d = document.createElement('span'); d.className = 'dot' + (s.online ? ' on' : s.push ? ' push' : '');
       d.title = s.online ? 'çevrimiçi' : s.push ? 'bildirimle ulaşılabilir' : 'çevrimdışı';
       b.append(d, document.createTextNode('@' + n));
-      b.onclick = () => callUser(n);
+      b.onclick = () => { $('callName').value = n; $('callName').focus(); toast(`@${n}: 📞 sesli ya da 📹 görüntülü ara`); };
       box.appendChild(b);
     }
   }
@@ -1455,18 +1482,18 @@
   }
   setInterval(() => { if (!room && document.visibilityState === 'visible') refreshContacts(); }, 20000);
 
-  async function callUser(n) {
+  async function callUser(n, video = false) {
     n = String(n || '').trim().toLowerCase().replace(/^@/, '');
     if (!NAME_RE.test(n)) { toast('Geçerli bir kullanıcı adı yaz'); return; }
     if (me && n === me.name) { toast('Kendini arayamazsın 🙂'); return; }
     addContact(n);
-    calling = n;
+    calling = n; peerName = n;
     const code = newRoomCode();
-    await start(code);
+    await start(code, { video });
     if (!room) return; // kamera/mikrofon izni yok
     await apiReady;
     setStatus(`📞 @${n} aranıyor…`);
-    const ws = new WebSocket(`${wsBase}/phone/ws?${nameQ(n)}&role=caller&room=${code}&from=${encodeURIComponent(me ? me.name : 'misafir')}`);
+    const ws = new WebSocket(`${wsBase}/phone/ws?${nameQ(n)}&role=caller&room=${code}&video=${video ? 1 : 0}&from=${encodeURIComponent(me ? me.name : 'misafir')}`);
     callWs = ws;
     const end = (text, ms = 3000, invite = false) => {
       stopRingback(); setStatus(text);
@@ -1500,8 +1527,9 @@
   function stopRingback() { clearInterval(ringback); ringback = null; }
   // Karşı taraf bağlanınca arama sinyalini kapat
   setInterval(() => { if (peerPresent && (callWs || ringback)) { stopRingback(); if (callWs) { try { callWs.close(); } catch {} callWs = null; } } }, 500);
-  $('callBtn').onclick = () => callUser($('callName').value);
-  $('callName').addEventListener('keydown', (e) => { if (e.key === 'Enter') callUser($('callName').value); });
+  $('callBtn').onclick = () => callUser($('callName').value, false);
+  $('vcallBtn').onclick = () => callUser($('callName').value, true);
+  $('callName').addEventListener('keydown', (e) => { if (e.key === 'Enter') callUser($('callName').value, false); });
 
   // ---------- Ana ekrana ekle ----------
   // Android (Chrome/Edge/Samsung): tarayıcının kurulum penceresi tek dokunuşla açılır.
@@ -1547,12 +1575,12 @@
   }
   // Bildirimden "Aç" ile gelindiyse (sayfa kapalıydı): aramayı kabul et ve görüşmeye gir
   if (params.get('cevap') && params.get('oda')) {
-    const r = { id: params.get('cevap'), room: params.get('oda').trim().toLowerCase(), from: params.get('kimden') || '' };
+    const r = { id: params.get('cevap'), room: params.get('oda').trim().toLowerCase(), from: params.get('kimden') || '', video: params.get('video') === '1' };
     history.replaceState(null, '', location.pathname);
     (async () => {
       if (params.get('islem') === 'gor') { incoming(r); return; } // sadece dokundu: gelen arama ekranı
       const ok = await answerRing(r, true);
-      if (ok) start(r.room); else toast('Arama sona ermiş', 3500);
+      if (ok) { peerName = r.from; start(r.room, { video: r.video }); } else toast('Arama sona ermiş', 3500);
     })();
   } else
   // Davet linkiyle açıldıysa tıklamadan doğrudan katıl

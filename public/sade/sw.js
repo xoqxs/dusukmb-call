@@ -21,8 +21,9 @@ async function fetchPending(me) {
   } catch { return undefined; } // ağ hatası: bilinmiyor
 }
 function callNote(ring, n) {
-  return self.registration.showNotification(`📞 Gelen arama · @${ring.from}`, {
-    body: n ? `Görüntülü arıyor… (${n * 3} sn)` : 'Görüntülü arıyor… açmak için dokun',
+  const kind = ring.video ? '📹 Görüntülü arama' : '📞 Sesli arama';
+  return self.registration.showNotification(`${kind} · @${ring.from}`, {
+    body: n ? `Arıyor… (${n * 3} sn)` : 'Arıyor… açmak için dokun',
     tag: 'dusukmb-call', renotify: true, requireInteraction: true, silent: false,
     icon: 'icon-192.png', badge: 'icon-192.png', vibrate: [800, 300, 800, 300, 800],
     actions: [{ action: 'accept', title: '📞 Aç' }, { action: 'decline', title: '✕ Reddet' }],
@@ -101,7 +102,7 @@ self.addEventListener('notificationclick', (e) => {
     }
     let url = data.url || self.registration.scope;
     if (ring) {
-      const q = new URLSearchParams({ cevap: ring.id, oda: ring.room, kimden: ring.from });
+      const q = new URLSearchParams({ cevap: ring.id, oda: ring.room, kimden: ring.from, video: ring.video ? '1' : '0' });
       if (action !== 'accept') q.set('islem', 'gor');
       url = self.registration.scope + '?' + q;
     }

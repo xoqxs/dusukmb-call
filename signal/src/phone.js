@@ -142,12 +142,13 @@ export class UserBox {
         }
         this.state.acceptWebSocket(server, ['owner']);
         const p = await this.pending();
-        server.send(JSON.stringify({ t: 'hello', ring: p ? { id: p.id, from: p.from, room: p.room } : null }));
+        server.send(JSON.stringify({ t: 'hello', ring: p ? { id: p.id, from: p.from, room: p.room, video: !!p.video } : null }));
         return new Response(null, { status: 101, webSocket: client });
       }
       // Arayan
       const from = (q.get('from') || '').toLowerCase().slice(0, 20) || 'misafir';
       const room = (q.get('room') || '').toLowerCase();
+      const video = q.get('video') === '1';
       const exists = !!(await this.state.storage.get('owner'));
       const subs = (await this.state.storage.get('subs')) || [];
       const online = this.owners().length > 0;
@@ -160,10 +161,10 @@ export class UserBox {
         return new Response(null, { status: 101, webSocket: client });
       }
       this.state.acceptWebSocket(server, ['caller']);
-      const p = { id: crypto.randomUUID().slice(0, 8), from, room, ts: Date.now() };
+      const p = { id: crypto.randomUUID().slice(0, 8), from, room, video, ts: Date.now() };
       await this.state.storage.put('pending', p);
       await this.state.storage.setAlarm(Date.now() + RING_MS);
-      this.send(this.owners(), { t: 'ring', id: p.id, from, room });
+      this.send(this.owners(), { t: 'ring', id: p.id, from, room, video });
       const pushed = subs.length ? this.push(subs) : Promise.resolve(0);
       server.send(JSON.stringify({ t: 'ringing', online, push: subs.length }));
       this.state.waitUntil(pushed);
@@ -173,7 +174,7 @@ export class UserBox {
     if (url.pathname === '/pending') {
       if (!(await this.authed(token))) return json({ error: 'yetkisiz' }, 401);
       const p = await this.pending();
-      return json({ ring: p ? { id: p.id, from: p.from, room: p.room } : null });
+      return json({ ring: p ? { id: p.id, from: p.from, room: p.room, video: !!p.video } : null });
     }
     if (url.pathname === '/answer') {
       if (!(await this.authed(token))) return json({ error: 'yetkisiz' }, 401);
