@@ -11,12 +11,12 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
   <main id="lobby" class="screen">
     <div class="brand"><img src="icon.svg" alt="" width="44" height="44"><h1>DusukMB Call</h1></div>
-    <p class="sub">Önce sesle başlar (~15 MB/sa), istersen kamerayı açarsın (~45 MB/sa)</p>
+    <p class="sub">Sesli arama ~15 MB/sa · görüntülü ~45 MB/sa</p>
     <!-- Ana ekrana ekle (iPhone + Android) -->
     <section id="installCard" class="install hidden">
       <img src="icon-192.png" alt="" width="40" height="40">
@@ -44,12 +44,13 @@
       <label for="callName">Birini ara</label>
       <div class="code-row">
         <input id="callName" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="kullanıcı adı" maxlength="20" enterkeyhint="go">
-        <button id="callBtn" class="green">📞 Ara</button>
+        <button id="callBtn" class="green" title="Sesli ara">📞</button>
+          <button id="vcallBtn" class="blue" title="Görüntülü ara">📹</button>
       </div>
       <div id="contacts" class="contacts"></div>
     </section>
     <div class="or"><span>ya da linkle</span></div>
-    <button id="startBtn" class="big">📹 Görüşme başlat</button>
+    <button id="startBtn" class="big">🔗 Linkle görüşme başlat</button>
     <button id="codeToggle" class="ghost">Kodla katıl</button>
     <div id="codeRow" class="code-row hidden">
       <input id="room" autocomplete="off" autocapitalize="off" placeholder="Oda kodu" enterkeyhint="go">
@@ -70,12 +71,11 @@
       <!-- Kameralar kapalıyken: sesli görüşme ekranı -->
       <div id="voiceView" class="voice-view hidden">
         <div id="voiceRing" class="voice-ring">🔈</div>
-        <b>Sesli görüşme</b>
+        <b id="voiceName">Sesli görüşme</b>
+        <span id="voiceTime" class="voice-time"></span>
         <span id="voiceSub">Kameralar kapalı · veri tasarrufu</span>
         <span id="audioDiag" class="audio-diag"></span>
-        <button id="earBtn" class="ear-btn">🌑 Kulağa götür (ekranı karart)</button>
       </div>
-      <button id="camCta" class="cam-cta">📷 Kamerayı aç</button>
       <button id="tapAudio" class="tap-audio hidden">🔊 Sesi açmak için dokun</button>
       <button id="camSuggest" class="cam-suggest hidden">Karşı taraf kamerasını açtı · <b>📷 Sen de aç</b></button>
       <div id="topBar" class="top-bar hidden">
@@ -94,14 +94,27 @@
     </div>
 
     <div class="controls">
-      <button id="micBtn" title="Mikrofon">🎤</button>
-      <button id="spkBtn" class="hidden" title="Ahize">📞</button>
-      <button id="camBtn" title="Kamera">📷</button>
-      <button id="setBtn" title="Ayarlar">⚙️</button>
-      <button id="chatBtn" title="Mesaj">💬<span id="chatBadge" class="badge hidden">0</span></button>
-      <button id="shareBtn" title="Davet et">🔗</button>
-      <button id="hangBtn" class="danger" title="Kapat">✕</button>
+      <button id="spkBtn" class="cbtn"><i>📞</i><span>Ahize</span></button>
+      <button id="camBtn" class="cbtn"><i>📹</i><span>Kamera</span></button>
+      <button id="micBtn" class="cbtn"><i>🎤</i><span>Sessiz</span></button>
+      <button id="moreBtn" class="cbtn"><i>⋯</i><span>Diğer</span><b id="moreBadge" class="badge hidden">0</b></button>
+      <button id="hangBtn" class="cbtn danger"><i>✕</i><span>Kapat</span></button>
     </div>
+
+    <!-- Diğer: geri kalan her şey -->
+    <section id="moreSheet" class="sheet hidden">
+      <div class="sheet-box">
+        <div class="sheet-head"><b>Diğer</b><button class="sheet-x" data-close="moreSheet" title="Kapat">✕</button></div>
+        <div class="more-grid">
+          <button id="chatBtn"><i>💬</i><span>Mesaj</span><b id="chatBadge" class="badge hidden">0</b></button>
+          <button id="shareBtn"><i>🔗</i><span>Davet et</span></button>
+          <button id="setBtn"><i>⚙️</i><span>Görüntü kalitesi</span></button>
+          <button id="flipBtn"><i>🔄</i><span>Kamerayı çevir</span></button>
+          <button id="earBtn"><i>🌑</i><span>Kulak modu</span></button>
+          <button id="statsBtn2"><i>📊</i><span>Veri ve bağlantı</span></button>
+        </div>
+      </div>
+    </section>
 
     <!-- Ayarlar: 4 basit seçenek, gerisi Gelişmiş'te -->
     <section id="setSheet" class="sheet hidden">
@@ -116,7 +129,6 @@
           <button data-p="fhd"><b>1080p</b><small>~2 GB/sa · Wi-Fi</small></button>
         </div>
         <label class="switch"><input id="autoQ" type="checkbox" checked> Bağlantı zayıflayınca otomatik düşür</label>
-        <label class="switch"><input id="camStart" type="checkbox"> Görüşmeler kamerayla başlasın</label>
         <div class="sheet-row">
           <button id="enhanceBtn" class="btn on">✨ Netleştirme</button>
           <button id="notifyBtn" class="btn">🔔 Bildirim</button>
@@ -193,7 +205,7 @@
     <div class="in-box">
       <div class="in-avatar" id="inAvatar">?</div>
       <b id="inName">-</b>
-      <span class="in-sub">görüntülü arıyor…</span>
+      <span id="inSub" class="in-sub">arıyor…</span>
       <div class="in-btns">
         <button id="inNo" class="in-no" title="Reddet">✕</button>
         <button id="inYes" class="in-yes" title="Aç">📞</button>
@@ -213,6 +225,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>

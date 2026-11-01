@@ -193,3 +193,23 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
 .audio-diag { margin-top: 6px; color: #c3d2ea !important; font-size: 14px; min-height: 18px; }
 .voice-ring { transition: transform 0.25s ease-out; }
 .stats .row.dev b { font-weight: 400; font-size: 12px; white-space: normal; word-break: break-word; }
+
+/* WhatsApp tarzı alt çubuk: simge + altında yazı */
+.controls { gap: 4px; padding-top: 12px; justify-content: space-around; }
+.controls button.cbtn { position: relative; flex: 1; max-width: 76px; height: auto; min-width: 0; padding: 0; background: none; border-radius: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: #c3d2ea; }
+.cbtn i { font-style: normal; width: 54px; height: 54px; border-radius: 50%; background: #1a2640; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.controls button.cbtn.on, .controls button.cbtn.off, .controls button.cbtn.danger { background: none; }
+.cbtn.on i { background: #e6edf7; color: #0b1220; }
+.cbtn.off i { background: #e6edf7; }
+.cbtn.danger i { background: #e5484d; color: #fff; }
+.cbtn .badge { top: -2px; right: calc(50% - 30px); }
+.more-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.more-grid button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 4px; border-radius: 14px; border: 0;
+  background: #1a2640; color: #e6edf7; font-size: 13px; cursor: pointer; }
+.more-grid i { font-style: normal; font-size: 24px; }
+.more-grid .badge { top: 6px; right: 10px; }
+.voice-time { color: #8da2c0; font-variant-numeric: tabular-nums; font-size: 15px !important; }
+#lobby button.blue { background: #2f7cf6; }
+#lobby .card .code-row button { font-size: 20px; padding: 10px 16px; }
+.voice-ring { font-weight: 700; color: #fff; margin-bottom: 18px; }
