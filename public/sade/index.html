@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="DusukMB">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <title>DusukMB Call</title>
+  <link rel="stylesheet" href="style.css?v=8">
+</head>
+<body>
+  <main id="lobby" class="screen">
+    <div class="brand"><img src="icon.svg" alt="" width="44" height="44"><h1>DusukMB Call</h1></div>
+    <p class="sub">Zayıf internette görüntülü görüşme.<br>Saatte yaklaşık 45 MB.</p>
+    <button id="startBtn" class="big">📹 Görüşme başlat</button>
+    <button id="codeToggle" class="ghost">Kodla katıl</button>
+    <div id="codeRow" class="code-row hidden">
+      <input id="room" autocomplete="off" autocapitalize="off" placeholder="Oda kodu" enterkeyhint="go">
+      <button id="joinBtn">Katıl</button>
+    </div>
+    <p id="lobbyMsg" class="hint">Başlat'a bas, gelen linki karşı tarafa gönder. Link açılınca görüşme kendiliğinden başlar.</p>
+    <p id="lobbyErr" class="error"></p>
+  </main>
+
+  <main id="call" class="screen hidden">
+    <div class="stage">
+      <canvas id="remoteCanvas"></canvas>
+      <video id="remoteVideo" playsinline autoplay></video>
+      <img id="remoteSnap" class="hidden" alt="">
+      <video id="localVideo" playsinline autoplay muted></video>
+      <div id="topBar" class="top-bar hidden">
+        <span id="qBars" class="qbars" title="Bağlantı kalitesi"><i></i><i></i><i></i></span>
+        <span id="mbBadge" class="mb-badge" title="Bu görüşmede harcanan veri">0 MB</span>
+      </div>
+      <div id="status" class="status">Bağlanıyor…</div>
+      <div id="chat" class="chat-ov">
+        <div id="chatLog" class="chat-log"></div>
+        <div id="chatTyping" class="chat-typing hidden">yazıyor…</div>
+        <form id="chatForm" class="chat-form hidden" autocomplete="off">
+          <input id="chatInput" maxlength="500" placeholder="Mesaj yaz…" enterkeyhint="send">
+          <button id="chatSend" type="submit" title="Gönder">➤</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="micBtn" title="Mikrofon">🎤</button>
+      <button id="camBtn" title="Kamera">📷</button>
+      <button id="setBtn" title="Ayarlar">⚙️</button>
+      <button id="chatBtn" title="Mesaj">💬<span id="chatBadge" class="badge hidden">0</span></button>
+      <button id="shareBtn" title="Davet et">🔗</button>
+      <button id="hangBtn" class="danger" title="Kapat">✕</button>
+    </div>
+
+    <!-- Davet: QR + WhatsApp + kopyala -->
+    <section id="inviteSheet" class="sheet hidden">
+      <div class="sheet-box">
+        <div class="sheet-head"><b>Davet et</b><button class="sheet-x" data-close="inviteSheet" title="Kapat">✕</button></div>
+        <p class="sheet-sub">Karşı taraf linki açınca görüşme kendiliğinden başlar.</p>
+        <div id="qr" class="qr"></div>
+        <div id="inviteLink" class="invite-link">-</div>
+        <div class="sheet-row">
+          <a id="waBtn" class="btn wa" target="_blank" rel="noopener">WhatsApp</a>
+          <button id="copyBtn" class="btn">Kopyala</button>
+          <button id="nativeShare" class="btn hidden">Paylaş…</button>
+        </div>
+        <button id="notifyAsk" class="btn ghost-btn hidden">🔔 Katılınca bana haber ver</button>
+      </div>
+    </section>
+
+    <!-- Ayarlar: 4 basit seçenek, gerisi Gelişmiş'te -->
+    <section id="setSheet" class="sheet hidden">
+      <div class="sheet-box">
+        <div class="sheet-head"><b>Görüntü</b><button class="sheet-x" data-close="setSheet" title="Kapat">✕</button></div>
+        <div class="quick" id="quick">
+          <button data-p="ses"><b>Sadece ses</b><small>~15 MB/sa</small></button>
+          <button data-p="cokdusuk"><b>Tasarruf</b><small>~28 MB/sa · fotoğraf</small></button>
+          <button data-p="normal"><b>Normal</b><small>~45 MB/sa</small></button>
+          <button data-p="iyi"><b>Net</b><small>~85 MB/sa</small></button>
+        </div>
+        <label class="switch"><input id="autoQ" type="checkbox" checked> Bağlantı zayıflayınca otomatik düşür</label>
+        <div class="sheet-row">
+          <button id="enhanceBtn" class="btn on">✨ Netleştirme</button>
+          <button id="notifyBtn" class="btn">🔔 Bildirim</button>
+        </div>
+        <p id="iosTip" class="tip hidden">iPhone'da arka plan bildirimi için: Safari'de <b>Paylaş → Ana Ekrana Ekle</b>, sonra uygulamayı oradan aç.</p>
+        <button id="statsBtn" class="link">Gelişmiş ▾</button>
+      </div>
+    </section>
+
+    <section id="stats" class="stats hidden">
+      <div class="row"><span>Profil</span>
+        <select id="profile">
+          <option value="endusuk">En düşük (~20 MB/sa, fotoğraf)</option>
+          <option value="cokdusuk">Tasarruf (~28 MB/sa, fotoğraf)</option>
+          <option value="normal" selected>Normal (~45 MB/sa)</option>
+          <option value="iyi">Net (~85 MB/sa)</option>
+          <option value="hd">HD 720p (~800 MB/sa)</option>
+          <option value="ses">Sadece ses (~15 MB/sa)</option>
+          <option value="ozel">Özel ayar</option>
+        </select>
+      </div>
+      <div class="row"><span></span><button id="customBtn" type="button" class="link">⚙️ Özel ayar</button></div>
+      <div id="custom" class="custom hidden">
+        <label>Kare hızı <b id="fpsVal">-</b>
+          <input id="fpsRange" type="range" min="0" max="11" step="1" value="7"></label>
+        <label>Video bit hızı <b id="bitVal">-</b>
+          <input id="bitRange" type="range" min="0" max="100" step="1" value="35"></label>
+      </div>
+      <div class="row estimate" id="estimate">-</div>
+      <div class="row"><span>Codec seçimi</span>
+        <select id="codec">
+          <option value="auto" selected>Otomatik</option>
+          <option value="av1">AV1 (en verimli)</option>
+          <option value="vp9">VP9</option>
+          <option value="h264">H.264</option>
+        </select>
+      </div>
+      <div class="row"><span>Giden</span><b id="sOut">-</b></div>
+      <div class="row"><span>Gelen</span><b id="sIn">-</b></div>
+      <div class="row"><span>Karşı görüntü</span><b id="sRes">-</b></div>
+      <div class="row"><span>Kullanılan codec</span><b id="sCodec">-</b></div>
+      <div class="row"><span>Bağlantı</span><b id="sPath">-</b></div>
+      <div class="row"><span>Kayıp / gecikme</span><b id="sLoss">-</b></div>
+      <div class="row"><span>Bu görüşme</span><b id="sTotal">-</b></div>
+      <div class="row"><span>Saatlik</span><b id="sHour">-</b></div>
+      <div class="row"><span>Netleştirme</span><b id="sGpu">-</b></div>
+      <div class="row"><span></span><button id="statsClose" type="button" class="link">Kapat ✕</button></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="peerjs.min.js?v=1"></script>
+  <script src="qrcode.js?v=1"></script>
+  <script src="enhance.js?v=4"></script>
+  <script src="app.js?v=12"></script>
+</body>
+</html>
