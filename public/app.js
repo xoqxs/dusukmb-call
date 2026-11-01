@@ -23,6 +23,7 @@
 
   let pc, localStream, room, iceConfig, profile = 'normal', codecPref = 'auto';
   let isOfferer = false, remoteIOS = false, pendingIce = [];
+  let remoteHidden = false, remoteSendsVideo = true, sentMode = null, peerPresent = false, userProfile = 'normal', autoDown = false;
   let statsTimer = null, callStart = 0, prevStats = null, leaving = false, hourBase = null, frozenSince = 0, lastFrames = -1;
   function resetHourly() { hourBase = null; if ($('sHour')) $('sHour').textContent = 'ölçülüyor…'; }
   window.__dusukmb = { get pc() { return pc; }, get conn() { return conn; }, get peer() { return peer; }, get enhancer() { return enhancer; } }; // hata ayıklama için
@@ -30,12 +31,24 @@
 
   // ---------- Lobi ----------
   const params = new URLSearchParams(location.search);
-  if (params.get('oda')) $('room').value = params.get('oda');
-  $('randomBtn').onclick = () => { $('room').value = Math.random().toString(36).slice(2, 8); };
+  let createdByMe = false;
+  const newRoomCode = () => {
+    const a = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = '';
+    const r = crypto.getRandomValues(new Uint8Array(7));
+    for (const x of r) s += a[x % a.length];
+    return s;
+  };
+  $('startBtn').onclick = () => { createdByMe = true; start(newRoomCode()); };
+  $('codeToggle').onclick = () => { $('codeRow').classList.toggle('hidden'); $('room').focus(); };
   $('joinBtn').onclick = () => start($('room').value.trim().toLowerCase());
   $('room').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinBtn').click(); });
 
   function setStatus(t) { statusEl.textContent = t; statusEl.classList.toggle('hidden', !t); }
+  let toastTimer = null;
+  function toast(t, ms = 2500) {
+    const el = $('toast'); el.textContent = t; el.classList.remove('hidden');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
+  }
 
   async function start(r) {
     if (!r) { $('room').focus(); return; }
@@ -48,13 +61,23 @@
         video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } },
       });
     } catch (e) {
-      alertInline('Kamera/mikrofon izni gerekli: ' + e.message);
-      return;
+      // Kamera yoksa/izin yoksa sadece sesle dene
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+        profile = userProfile = 'ses'; $('profile').value = 'ses'; syncCustomUi();
+      } catch (e2) {
+        alertInline('Kamera/mikrofon izni gerekli. Adres çubuğundaki kilit simgesinden izin verip sayfayı yenile. (' + e2.message + ')');
+        $('lobbyMsg').textContent = '';
+        return;
+      }
     }
+    localStream.getTracks().forEach(watchTrack);
     localVideo.srcObject = localStream;
     loadChat();
     lobby.classList.add('hidden');
     call.classList.remove('hidden');
+    $('topBar').classList.remove('hidden');
+    syncQuick();
     setStatus('Sunucuya bağlanıyor…');
     // Kendi sunucumuz varsa config.json'dan okunur; yoksa (GitHub Pages) ücretsiz PeerJS sinyal sunucusu kullanılır
     let cfg = {};
@@ -64,11 +87,7 @@
     startSignal();
   }
 
-  function alertInline(t) {
-    let el = document.querySelector('.error');
-    if (!el) { el = document.createElement('p'); el.className = 'error'; lobby.appendChild(el); }
-    el.textContent = t;
-  }
+  function alertInline(t) { $('lobbyErr').textContent = t; }
 
   // ---------- Sinyal (resmi PeerJS kütüphanesi) ----------
   // Odaya ilk giren "a", ikinci giren "b" kimliğini alır. "b", "a"ya küçük bir veri kanalı açar;
@@ -104,7 +123,12 @@
     p.on('open', () => {
       saveSess();
       clearTimeout(fullTimer); fullSince = 0;
-      if (myRole === 'a') { if (!pc) setStatus('Karşı taraf bekleniyor… Linki paylaş 🔗'); }
+      if (myRole === 'a') {
+        if (!pc) {
+          setStatus('Karşı taraf bekleniyor… Linki gönder 🔗');
+          if (createdByMe) { createdByMe = false; openInvite(); }
+        }
+      }
       else { if (!pc) setStatus('Bağlanıyor…'); connectToA(); }
     });
     p.on('connection', (c2) => { if (c2.peer === otherId) attachConn(c2); else c2.close(); });
@@ -153,7 +177,7 @@
       if (conn !== c) return;
       conn = null;
       refreshPeerStatus();
-      if (!leaving) { onSignal({ type: 'bye' }); scheduleRetry(1500); }
+      if (!leaving) { onSignal({ type: 'bye', local: true }); scheduleRetry(1500); }
     });
     c.on('error', () => scheduleRetry(1500));
   }
@@ -228,7 +252,7 @@
         break;
       case 'profile':
         if (msg.custom) Object.assign(PROFILES.ozel, msg.custom);
-        if (PROFILES[msg.value]) { profile = msg.value; $('profile').value = profile; syncCustomUi(); applyProfile(); }
+        if (PROFILES[msg.value]) { profile = userProfile = msg.value; autoDown = false; syncQuick(); $('profile').value = profile; syncCustomUi(); applyProfile(); }
         break;
       case 'frame':
         showSnap(msg);
@@ -245,9 +269,22 @@
       case 'typing':
         showTyping(true);
         break;
+      case 'mode':
+        remoteSendsVideo = !!msg.video; frozenSince = 0;
+        break;
+      case 'vis':
+        // Karşı taraf uygulamadan çıktı/döndü: görmediği görüntüyü boşuna gönderme
+        if (remoteHidden !== !!msg.hidden) {
+          remoteHidden = !!msg.hidden;
+          applyProfile();
+          if (remoteHidden) toast('Karşı taraf arka planda · görüntü duraklatıldı, ses sürüyor', 3500);
+        }
+        break;
       case 'bye':
         setStatus('Karşı taraf ayrıldı. Bekleniyor…');
+        remoteHidden = false;
         resetPc();
+        if (peerPresent && !msg.local) { peerPresent = false; alertUser('left'); }
         break;
     }
   }
@@ -293,7 +330,13 @@
       if (pc !== thisPc) return;
       const s = pc.connectionState;
       clearTimeout(discTimer);
-      if (s === 'connected') { setStatus(PROFILES[profile].audioOnly ? '🔈 Sadece ses modu' : ''); if (!callStart) callStart = Date.now(); frozenSince = 0; startStats(); applyProfile(); }
+      if (s === 'connected') {
+        setStatus(PROFILES[profile].audioOnly ? '🔈 Sadece ses modu' : '');
+        if (!callStart) callStart = Date.now();
+        frozenSince = 0; startStats(); applyProfile(); keepAwake();
+        signal({ type: 'vis', hidden: document.visibilityState === 'hidden' });
+        if (!peerPresent) { peerPresent = true; closeSheets(); alertUser('joined'); }
+      }
       else if (s === 'disconnected') {
         setStatus('Bağlantı zayıf…');
         // Ağ değişiminde tarayıcı "failed" demeden önce 20-30 sn bekleyebilir; 4 sn sonra kendimiz yenileyelim
@@ -315,7 +358,8 @@
 
   function resetPc() {
     if (pc) { pc.close(); pc = null; }
-    pendingIce = []; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
+    carried += lastTotal; lastTotal = 0; snapTx = 0; snapRx = 0; prevLoss = null;
+    pendingIce = []; sentMode = null; remoteSendsVideo = true; remoteVideo.srcObject = null; callStart = 0; prevStats = null; hourBase = null; frozenSince = 0; lastFrames = -1;
     if (enhancer) enhancer.stop();
     stopStats();
   }
@@ -358,6 +402,7 @@
     const p = PROFILES[profile];
     resetHourly();
     const snap = !p.audioOnly && (p.snap || p.vbr < 30000);
+    const noVideo = p.audioOnly || remoteHidden; // karşı taraf görmüyorsa görüntü gönderme
     const vt = localStream && localStream.getVideoTracks()[0];
     if (vt && !p.audioOnly) {
       // Kamerayı en az 480×360 aç (HD için 1280×720); küçültmeyi kodlayıcı yapar
@@ -366,18 +411,20 @@
       try { await vt.applyConstraints({ width: { ideal: capW }, height: { ideal: capH }, frameRate: { ideal: wantFps, max: wantFps } }); } catch {}
     }
     localVideo.classList.toggle('dim', !!p.audioOnly);
-    if (snap) startSnap(p); else stopSnap();
+    if (snap && !noVideo) startSnap(p); else stopSnap();
     if (!snap) $('remoteSnap').classList.add('hidden');
     if (pc && pc.connectionState === 'connected') {
       setStatus(p.audioOnly ? '🔈 Sadece ses modu' : '');
     }
     if (!pc) return;
+    const sendsVideo = !noVideo && !snap && !!vt;
+    if (sentMode !== sendsVideo && conn && conn.open) { sentMode = sendsVideo; signal({ type: 'mode', video: sendsVideo }); }
     for (const tr of pc.getTransceivers()) {
       const s = tr.sender;
       const kind = tr.receiver.track && tr.receiver.track.kind;
       if (kind === 'video') {
         // Sadece ses / fotoğraf modu: video akışını tamamen durdur (siyah kare bile gitmesin)
-        if (p.audioOnly || snap) { if (s.track) { try { await s.replaceTrack(null); } catch {} } continue; }
+        if (noVideo || snap) { if (s.track) { try { await s.replaceTrack(null); } catch {} } continue; }
         if (!s.track && vt) { try { await s.replaceTrack(vt); } catch {} }
       }
       if (!s.track) continue;
@@ -461,6 +508,41 @@
   const mb = (b) => (b / 1e6).toFixed(1) + ' MB';
   const kbps = (bytes, ms) => Math.round((bytes * 8) / ms) + ' kbps';
 
+  // ---------- Bağlantı kalitesi + otomatik düşürme ----------
+  // Gönderdiğim görüntüde kayıp ya da gecikme yüksekse bir alt seviyeye in; 30 sn iyi giderse seçilene geri çık.
+  const LADDER = ['cokdusuk', 'normal', 'iyi'];
+  let carried = 0, lastTotal = 0, prevLoss = null, badN = 0, goodN = 0;
+  function checkQuality(report, pair) {
+    let outLoss = 0, rtt = pair.currentRoundTripTime || 0, lost = 0, recv = 0;
+    report.forEach((s) => {
+      if (s.type === 'remote-inbound-rtp') {
+        if (typeof s.fractionLost === 'number') outLoss = Math.max(outLoss, s.fractionLost);
+        if (!rtt && s.roundTripTime) rtt = s.roundTripTime;
+      }
+      if (s.type === 'inbound-rtp') { lost += s.packetsLost || 0; recv += s.packetsReceived || 0; }
+    });
+    let inLoss = 0;
+    if (prevLoss) { const dl = lost - prevLoss.lost, dr = recv - prevLoss.recv; if (dl + dr > 0) inLoss = Math.max(0, dl) / (dl + dr); }
+    prevLoss = { lost, recv };
+    const worst = Math.max(outLoss, inLoss);
+    const q = (worst > 0.1 || rtt > 0.8) ? 1 : (worst > 0.03 || rtt > 0.35) ? 2 : 3;
+    $('qBars').className = 'qbars q' + q;
+    $('sLoss').textContent = `%${Math.round(outLoss * 100)} giden · %${Math.round(inLoss * 100)} gelen · ${Math.round(rtt * 1000)} ms`;
+    // Otomatik düşürme sadece basit seçeneklerde
+    const i = LADDER.indexOf(profile), ui = LADDER.indexOf(userProfile);
+    if (!$('autoQ').checked || i === -1 || ui === -1) { badN = goodN = 0; return; }
+    if (outLoss > 0.08 || rtt > 1.0) { badN++; goodN = 0; } else if (outLoss < 0.02 && rtt < 0.45) { goodN++; badN = 0; } else { badN = 0; goodN = 0; }
+    if (badN >= 3 && i > 0) {
+      badN = 0; setLocalProfile(LADDER[i - 1]); autoDown = true;
+      toast(`Bağlantı zayıf · ${LABELS[profile]} moduna geçildi`);
+    } else if (goodN >= 15 && i < ui) {
+      goodN = 0; setLocalProfile(LADDER[i + 1]); autoDown = profile !== userProfile;
+      toast(`Bağlantı düzeldi · ${LABELS[profile]}`);
+    }
+  }
+  const LABELS = { ses: 'Sadece ses', endusuk: 'En düşük', cokdusuk: 'Tasarruf', normal: 'Normal', iyi: 'Net', hd: 'HD', ozel: 'Özel' };
+  function setLocalProfile(p) { profile = p; $('profile').value = p; syncCustomUi(); syncQuick(); applyProfile(); }
+
   async function pollStats() {
     if (!pc) return;
     const report = await pc.getStats();
@@ -475,7 +557,7 @@
       if (s.type === 'inbound-rtp' && s.kind === 'video') {
         // Görüntü donmuş mu? (kare sayısı artmıyor)
         const p = PROFILES[profile];
-        const expectVideo = !p.audioOnly && !(p.snap || p.vbr < 30000);
+        const expectVideo = !p.audioOnly && !(p.snap || p.vbr < 30000) && !remoteHidden && document.visibilityState === 'visible' && remoteSendsVideo && Date.now() - lastSnapAt > 5000;
         const fd = s.framesDecoded || 0;
         if (expectVideo && pc.connectionState === 'connected' && fd === lastFrames) {
           if (!frozenSince) frozenSince = Date.now();
@@ -518,6 +600,10 @@
       const dtx = tx - hourBase.tx, drx = rx - hourBase.rx;
       $('sHour').textContent = `${perH(dtx + drx)} MB/sa (gönd. ${perH(dtx)} · alınan ${perH(drx)})`;
     } else $('sHour').textContent = 'ölçülüyor…';
+    lastTotal = tx + rx;
+    const perHour = hEl >= 10 ? Math.round((tx - hourBase.tx + rx - hourBase.rx) / hEl * 3600 / 1e6) : 0;
+    $('mbBadge').textContent = mb(carried + lastTotal) + (perHour ? ` · ~${perHour} MB/sa` : '');
+    checkQuality(report, pair);
     $('sGpu').textContent = enhancer && enhancer.enabled ? (enhancer.lastMs ? enhancer.lastMs.toFixed(1) + ' ms/kare' : '-') : 'kapalı';
   }
 
@@ -535,7 +621,156 @@
     enhancer.setEnabled(!enhancer.enabled);
     e.currentTarget.classList.toggle('on', enhancer.enabled);
   };
-  $('statsBtn').onclick = () => $('stats').classList.toggle('hidden');
+  $('statsBtn').onclick = () => { closeSheets(); $('stats').classList.remove('hidden'); };
+  $('statsClose').onclick = () => $('stats').classList.add('hidden');
+
+  // ---------- Alt sayfalar: ayarlar ve davet ----------
+  function closeSheets() { document.querySelectorAll('.sheet').forEach((el) => el.classList.add('hidden')); }
+  document.querySelectorAll('.sheet').forEach((el) => el.addEventListener('click', (e) => { if (e.target === el) closeSheets(); }));
+  document.querySelectorAll('[data-close]').forEach((b) => b.onclick = closeSheets);
+  $('setBtn').onclick = () => { const open = !$('setSheet').classList.contains('hidden'); closeSheets(); if (!open) { syncQuick(); syncNotifyUi(); $('setSheet').classList.remove('hidden'); } };
+  function syncQuick() {
+    document.querySelectorAll('#quick button').forEach((b) => b.classList.toggle('sel', b.dataset.p === profile));
+  }
+  document.querySelectorAll('#quick button').forEach((b) => b.onclick = () => {
+    const v = b.dataset.p;
+    if (v !== 'ses' && !(localStream && localStream.getVideoTracks()[0])) { toast('Kamera yok, sadece ses kullanılabilir'); return; }
+    profile = userProfile = v; autoDown = false; badN = goodN = 0;
+    $('profile').value = v; syncCustomUi(); syncQuick(); applyProfile();
+    signal({ type: 'profile', value: v });
+  });
+
+  function inviteUrl() { return `${location.origin}${location.pathname}?oda=${encodeURIComponent(room)}`; }
+  function openInvite() {
+    const url = inviteUrl();
+    $('inviteLink').textContent = url;
+    if (window.qrcode) {
+      const q = window.qrcode(0, 'M'); q.addData(url); q.make();
+      $('qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    }
+    $('waBtn').href = 'https://wa.me/?text=' + encodeURIComponent('Görüntülü görüşmeye katıl: ' + url);
+    $('nativeShare').classList.toggle('hidden', !navigator.share);
+    syncNotifyUi();
+    closeSheets();
+    $('inviteSheet').classList.remove('hidden');
+  }
+  $('copyBtn').onclick = async () => {
+    try { await navigator.clipboard.writeText(inviteUrl()); toast('Link kopyalandı ✓'); }
+    catch { const r = document.createRange(); r.selectNodeContents($('inviteLink')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Linki seçip kopyala'); }
+  };
+  $('nativeShare').onclick = async () => { try { await navigator.share({ title: 'DusukMB Call', text: 'Görüntülü görüşmeye katıl', url: inviteUrl() }); } catch {} };
+
+  // ---------- Bildirim, titreşim, zil ----------
+  // Sayfa arka plandayken (tarayıcı açık) karşı taraf katılınca/ayrılınca ya da mesaj gelince haber verir.
+  // Android: bildirim + titreşim. iPhone: sadece Ana Ekrana eklenmiş uygulamada (iOS 16.4+).
+  const IS_STANDALONE = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  let swReg = null, unread = 0;
+  const baseTitle = document.title;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then((r) => { swReg = r; }).catch(() => {});
+  const notifyState = () => !('Notification' in window) ? 'none' : Notification.permission;
+  function syncNotifyUi() {
+    const st = notifyState();
+    $('notifyBtn').classList.toggle('on', st === 'granted');
+    $('notifyBtn').textContent = st === 'granted' ? '🔔 Bildirim açık' : st === 'denied' ? '🔕 Bildirim engelli' : '🔔 Bildirim';
+    $('notifyAsk').classList.toggle('hidden', st !== 'default');
+    $('iosTip').classList.toggle('hidden', !(IS_IOS && !IS_STANDALONE));
+  }
+  async function askNotify() {
+    const st = notifyState();
+    if (st === 'none') { toast(IS_IOS ? 'iPhone: önce Ana Ekrana Ekle' : 'Bu tarayıcı bildirim desteklemiyor', 3500); return; }
+    if (st === 'denied') { toast('Bildirim engellenmiş: adres çubuğundaki kilitten izin ver', 3500); return; }
+    if (st === 'granted') { toast('Bildirimler zaten açık'); return; }
+    try { await Notification.requestPermission(); } catch {}
+    syncNotifyUi();
+    if (notifyState() === 'granted') toast('Tamam, arka plandayken haber vereceğim 🔔');
+  }
+  $('notifyBtn').onclick = askNotify;
+  $('notifyAsk').onclick = askNotify;
+  let actx = null;
+  function ring(kind) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      const notes = kind === 'joined' ? [660, 880] : kind === 'msg' ? [880] : [520, 390];
+      notes.forEach((f, i) => {
+        const o = actx.createOscillator(), g = actx.createGain();
+        const t = actx.currentTime + i * 0.16;
+        o.frequency.value = f; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+        o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.15);
+      });
+    } catch {}
+  }
+  async function showNote(title, body, tag) {
+    if (notifyState() !== 'granted') return;
+    const opts = { body, tag, renotify: true, icon: 'icon.svg', badge: 'icon.svg', vibrate: [200, 100, 200], data: { url: inviteUrl() } };
+    try {
+      const reg = swReg || (navigator.serviceWorker && await navigator.serviceWorker.getRegistration());
+      if (reg) { await reg.showNotification(title, opts); return; }
+      const n = new Notification(title, opts); n.onclick = () => { window.focus(); n.close(); };
+    } catch (e) { console.warn('bildirim', e); }
+  }
+  function alertUser(kind, text) {
+    const hidden = document.visibilityState === 'hidden';
+    ring(kind);
+    if (navigator.vibrate) { try { navigator.vibrate(kind === 'msg' ? 120 : [200, 100, 200]); } catch {} }
+    if (kind === 'msg' && hidden) { unread++; document.title = `(${unread}) ${baseTitle}`; }
+    if (!hidden) return;
+    if (kind === 'joined') showNote('Karşı taraf katıldı', 'Görüşmeye dönmek için dokun', 'dusukmb-peer');
+    else if (kind === 'left') showNote('Karşı taraf ayrıldı', 'Görüşme bitti ya da bağlantı koptu', 'dusukmb-peer');
+    else if (kind === 'msg') showNote('Yeni mesaj', text || '', 'dusukmb-msg');
+  }
+
+  // ---------- Telefonda sağlamlık ----------
+  // Ekran kararmasın (görüşme sürerken)
+  let wakeLock = null;
+  async function keepAwake() {
+    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || leaving) return;
+    if (wakeLock && !wakeLock.released) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+  }
+  // Kamera/mikrofon başka uygulama yüzünden ya da arka planda kapanırsa yeniden aç
+  function watchTrack(t) { t.addEventListener('ended', () => { if (!leaving) reacquire(t.kind); }); }
+  let reacquiring = {};
+  async function reacquire(kind) {
+    if (reacquiring[kind] || leaving || !localStream) return;
+    reacquiring[kind] = true;
+    try {
+      const old = kind === 'audio' ? localStream.getAudioTracks()[0] : localStream.getVideoTracks()[0];
+      const wasEnabled = old ? old.enabled : true;
+      const ns = await navigator.mediaDevices.getUserMedia(kind === 'audio'
+        ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }
+        : { video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } } });
+      const nt = ns.getTracks()[0];
+      nt.enabled = wasEnabled;
+      if (old) { localStream.removeTrack(old); try { old.stop(); } catch {} }
+      localStream.addTrack(nt);
+      watchTrack(nt);
+      if (kind === 'video') { localVideo.srcObject = localStream; localVideo.play().catch(() => {}); }
+      if (pc) {
+        for (const tr of pc.getTransceivers()) {
+          const k = tr.receiver.track && tr.receiver.track.kind;
+          if (k === kind && (tr.sender.track || kind === 'audio')) { try { await tr.sender.replaceTrack(nt); } catch {} }
+        }
+        applyProfile();
+      }
+    } catch (e) {
+      console.warn('yeniden açılamadı', kind, e);
+      setTimeout(() => { reacquiring[kind] = false; if (document.visibilityState === 'visible') reacquire(kind); }, 4000);
+      return;
+    }
+    reacquiring[kind] = false;
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!room || leaving) return;
+    const hidden = document.visibilityState === 'hidden';
+    signal({ type: 'vis', hidden });
+    if (!hidden) {
+      unread = 0; document.title = baseTitle;
+      keepAwake();
+      if (localStream) for (const t of localStream.getTracks()) if (t.readyState === 'ended') reacquire(t.kind);
+    }
+  });
 
   // ---------- Sohbet (YouTube canlı sohbeti gibi, video üstünde) ----------
   // Gelen/giden mesajlar videonun üstünde belirir ve birkaç saniye sonra kaybolur.
@@ -611,6 +846,7 @@
     if (!chat.some((m) => m.id === msg.id)) {
       chat.push({ id: msg.id || newId(), text, who: 'them', t: Number(msg.t) || Date.now(), shownAt: Date.now() });
       saveChat(); renderChat();
+      alertUser('msg', text);
     }
     signal({ type: 'chat-ack', id: msg.id });
     sendReadReceipts();
@@ -648,7 +884,7 @@
     $('chatInput').focus();
   };
   $('profile').onchange = (e) => {
-    profile = e.target.value;
+    profile = userProfile = e.target.value; autoDown = false; syncQuick();
     syncCustomUi();
     applyProfile();
     signal({ type: 'profile', value: profile, custom: profile === 'ozel' ? PROFILES.ozel : undefined });
@@ -751,13 +987,7 @@
     const o = $('codec').querySelector('option[value="av1"]');
     if (o) o.textContent += ' (bu cihazda yok)';
   }
-  $('shareBtn').onclick = async () => {
-    const url = `${location.origin}${location.pathname}?oda=${encodeURIComponent(room)}`;
-    try {
-      if (navigator.share) await navigator.share({ title: 'DusukMB Call', text: 'Görüntülü görüşmeye katıl', url });
-      else { await navigator.clipboard.writeText(url); setStatus('Link kopyalandı'); setTimeout(() => setStatus(''), 1500); }
-    } catch {}
-  };
+  $('shareBtn').onclick = () => { if ($('inviteSheet').classList.contains('hidden')) openInvite(); else closeSheets(); };
   $('hangBtn').onclick = () => {
     leaving = true;
     clearSess();
@@ -765,6 +995,7 @@
     resetPc();
     if (peer) peer.destroy();
     localStream.getTracks().forEach((t) => t.stop());
+    try { if (wakeLock) wakeLock.release(); } catch {}
     location.href = location.pathname;
   };
   window.addEventListener('pagehide', (e) => {
@@ -782,4 +1013,11 @@
   document.addEventListener('click', () => { if (remoteVideo.paused && remoteVideo.srcObject) remoteVideo.play().catch(() => {}); });
 
   if (enhancer && !enhancer.supported) $('enhanceBtn').classList.remove('on');
+  // Davet linkiyle açıldıysa tıklamadan doğrudan katıl
+  if (params.get('oda')) {
+    const r = params.get('oda').trim().toLowerCase();
+    $('room').value = r;
+    $('lobbyMsg').textContent = 'Görüşmeye katılıyorsun… Kamera/mikrofon iznine "İzin ver" de.';
+    start(r);
+  }
 })();
