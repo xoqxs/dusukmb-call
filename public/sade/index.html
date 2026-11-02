@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>DusukMB Call</title>
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
   <main id="lobby" class="screen">
@@ -46,7 +46,6 @@
         <input id="callName" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="kullanıcı adı" maxlength="20" enterkeyhint="go">
         <button id="callBtn" class="green" title="Sesli ara">📞</button>
           <button id="vcallBtn" class="blue" title="Görüntülü ara">📹</button>
-        <button id="msgBtn" title="Mesaj yaz">✉️</button>
       </div>
       <div id="contacts" class="contacts"></div>
     </section>
@@ -199,16 +198,6 @@
     </div>
   </section>
 
-  <!-- Mesajlar (görüşme dışında, doğrudan telefondan telefona) -->
-  <section id="dmSheet" class="sheet hidden">
-    <div class="sheet-box">
-      <div class="sheet-head"><b id="dmTitle">Mesaj</b><button class="sheet-x" data-close="dmSheet" title="Kapat">✕</button></div>
-      <p class="sheet-sub">Karşı taraf çevrimiçiyken ve uygulama açıkken ulaşır. Ulaşana kadar ⏳ görünür, uygulaman açıkken otomatik denenir.</p>
-      <div id="dmList" class="dm-list"></div>
-      <div class="code-row"><input id="dmText" autocomplete="off" maxlength="1000" placeholder="Mesaj yaz…" enterkeyhint="send"><button id="dmSend">Gönder</button></div>
-    </div>
-  </section>
-
   <!-- Kulak modu: siyah ekran, dokunuşlar yok sayılır, iki kez dokununca açılır -->
   <div id="earMode" class="ear-mode hidden"><span>Görüşme sürüyor · açmak için iki kez dokun</span></div>
   <!-- Gelen arama -->
@@ -236,6 +225,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=27"></script>
+  <script src="app.js?v=28"></script>
 </body>
 </html>
