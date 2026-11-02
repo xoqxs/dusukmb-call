@@ -213,3 +213,10 @@ input { padding: 14px; border-radius: 12px; border: 1px solid #22314d; backgroun
 #lobby button.blue { background: #2f7cf6; }
 #lobby .card .code-row button { font-size: 20px; padding: 10px 16px; }
 .voice-ring { font-weight: 700; color: #fff; margin-bottom: 18px; }
+
+.dm-list { display: flex; flex-direction: column; gap: 6px; max-height: 38vh; overflow-y: auto; padding: 4px 2px; }
+.dm-m { max-width: 82%; padding: 8px 12px; border-radius: 14px; background: #1a2640; font-size: 15px; word-break: break-word; align-self: flex-start; }
+.dm-m.me { align-self: flex-end; background: #2b5fd9; }
+.dm-m small { display: block; opacity: .6; font-size: 11px; margin-top: 2px; }
+#msgBtn { min-width: 44px; }
+.dm-m.sys { align-self: center; background: transparent; color: #ffb3b3; border: 1px solid #3a2a38; font-size: 13px; }
