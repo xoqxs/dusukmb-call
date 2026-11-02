@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 23; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 24; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
@@ -122,14 +122,21 @@
     // Görüşme sesle başlar; kamera kullanıcı isteyince açılır (ayarlardan "kamerayla başlasın" seçilebilir)
     const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
     const wantCam = !!opts.video; // görüntülü arama kamerayla, sesli arama ahizeden başlar
+    // iPhone: mikrofon açılmadan önce ses oturumu kayda uygun olmalı ("not compatible with audio capture" hatasını önler)
+    try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch {}
     try {
       localStream = await navigator.mediaDevices.getUserMedia(wantCam ? { audio: AUDIO, video: CAM } : { audio: AUDIO });
       camOn = wantCam;
     } catch (e) {
-      try { localStream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); camOn = false; }
+      try {
+        try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch {}
+        await new Promise((r) => setTimeout(r, 300));
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); camOn = false;
+      }
       catch (e2) {
         room = null;
-        alertInline('Mikrofon izni gerekli. Adres çubuğundaki kilit simgesinden izin verip sayfayı yenile. (' + e2.message + ')');
+        const denied = e2 && (e2.name === 'NotAllowedError' || e2.name === 'SecurityError') && !/AudioSession/i.test(e2.message || '');
+        alertInline((denied ? 'Mikrofon izni gerekli. Adres çubuğundaki kilit simgesinden izin verip sayfayı yenile.' : 'Mikrofon açılamadı. Uygulamayı tamamen kapatıp tekrar aç.') + ' (' + e2.message + ')');
         $('lobbyMsg').textContent = '';
         return;
       }
@@ -748,7 +755,7 @@
     spkUi(on);
     // iPhone (Safari 16.4+): ses yolunu Audio Session API belirler. play-and-record = ahize, playback = hoparlör
     if (navigator.audioSession) {
-      try { navigator.audioSession.type = on ? 'playback' : 'play-and-record'; routeInfo = 'audioSession: ' + navigator.audioSession.type; } catch (e) { routeInfo = 'audioSession hata: ' + e.name; }
+      try { navigator.audioSession.type = on ? 'auto' : 'play-and-record'; routeInfo = 'audioSession: ' + navigator.audioSession.type; } catch (e) { routeInfo = 'audioSession hata: ' + e.name; }
       const rs = remoteAudio.srcObject; if (rs) { remoteAudio.srcObject = null; remoteAudio.srcObject = rs; playAudio(); }
       if (manual) toast(on ? '🔊 Hoparlör' : '📞 Ahize (telefonu kulağına götür)');
       return;
