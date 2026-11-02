@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 25; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 28; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
