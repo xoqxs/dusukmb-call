@@ -322,6 +322,14 @@
         }
         break;
       case 'bye':
+        // Karşı taraf ✕'e basıp görüşmeyi bitirdiyse (end) bizde de kapanır; sayfa yenileme/ağ kopması ise beklemeye devam
+        if (msg.end && !msg.local && peerPresent) {
+          peerPresent = false; alertUser('left');
+          setStatus('Görüşme sona erdi');
+          toast('Karşı taraf görüşmeyi bitirdi', 2500);
+          setTimeout(() => finishCall(), 1200);
+          break;
+        }
         setStatus('Karşı taraf ayrıldı. Bekleniyor…');
         remoteHidden = false;
         resetPc();
@@ -1267,15 +1275,28 @@
     if (o) o.textContent += ' (bu cihazda yok)';
   }
   $('shareBtn').onclick = () => { if ($('inviteSheet').classList.contains('hidden')) openInvite(); else closeSheets(); };
-  $('hangBtn').onclick = () => {
-    leaving = true;
+  // Görüşmeyi tamamen kapat ve ana ekrana dön
+  function finishCall() {
+    if (finishing) return;
+    finishing = true; leaving = true;
     clearSess();
-    signal({ type: 'bye' });
+    stopRingback();
+    try { if (callWs) callWs.close(); } catch {}
     resetPc();
-    if (peer) peer.destroy();
-    localStream.getTracks().forEach((t) => t.stop());
+    try { if (peer) peer.destroy(); } catch {}
+    try { if (callPeer) callPeer.destroy(); } catch {}
+    try { localStream.getTracks().forEach((t) => t.stop()); } catch {}
     try { if (wakeLock) wakeLock.release(); } catch {}
     location.href = location.pathname;
+  }
+  let finishing = false;
+  $('hangBtn').onclick = () => {
+    if (finishing) return;
+    leaving = true;
+    // "end": karşı taraf da görüşmeyi kapatsın (sayfa yenileme/ağ kopması bunu göndermez)
+    signal({ type: 'bye', end: true });
+    // Mesajın yola çıkması için kısa bir süre tanı, sonra kapat
+    setTimeout(finishCall, conn && conn.open ? 350 : 0);
   };
   window.addEventListener('pagehide', (e) => {
     if (leaving || e.persisted) return; // persisted: sayfa önbellekte duruyor (uygulama değişimi), görüşmeyi kesme
