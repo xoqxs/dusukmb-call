@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 24; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 25; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
@@ -60,7 +60,7 @@
   const remoteAudio = $('remoteAudio');
   // Tarayıcı dokunuş olmadan sesi başlatmazsa (davet linkiyle doğrudan girişte) "Sesi aç" düğmesi göster
   // iPhone: sesi <audio> yerine Web Audio ile çal (ahizeye yönlenmesi için deneme; sorun çıkarsa false yap)
-  const IOS_WEBAUDIO = true;
+  const IOS_WEBAUDIO = false;
   let wa = null;
   function webAudioPlay() {
     try {
