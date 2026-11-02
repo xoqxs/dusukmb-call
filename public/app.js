@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 27; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 25; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
@@ -1475,7 +1475,7 @@
       else if (m.t === 'ring') incoming(m);
       else if ((m.t === 'cancel' || m.t === 'handled') && inRing && inRing.id === m.id) {
         const who = inRing.from; stopIncoming();
-        if (m.t === 'cancel') missedCall(who);
+        if (m.t === 'cancel') toast(`@${who} aradı, cevapsız kaldı`, 4000);
       }
     };
     ws.onclose = () => {
@@ -1509,12 +1509,11 @@
     });
     p.on('connection', (c) => {
       c.on('data', (m) => {
-        if (m && m.t === 'dm') { handleDm(c, m); return; }
-        if (!m || m.t !== 'ring') { if (m && m.t === 'cancel' && inRing && inRing.via === c) { const who = inRing.from; stopIncoming(); missedCall(who); } return; }
+        if (!m || m.t !== 'ring') { if (m && m.t === 'cancel' && inRing && inRing.via === c) { const who = inRing.from; stopIncoming(); toast(`@${who} aradı, cevapsız kaldı`, 4000); } return; }
         incoming({ id: String(m.id), from: String(m.from || 'misafir').slice(0, 20), room: String(m.room), video: !!m.video, via: c });
         try { c.send({ t: 'ringing', online: true }); } catch {}
       });
-      c.on('close', () => { if (inRing && inRing.via === c) { const who = inRing.from; stopIncoming(); missedCall(who); } });
+      c.on('close', () => { if (inRing && inRing.via === c) { const who = inRing.from; stopIncoming(); toast(`@${who} aradı, cevapsız kaldı`, 4000); } });
     });
   }
 
@@ -1613,7 +1612,7 @@
       const s = st[n] || {};
       const d = document.createElement('span'); d.className = 'dot' + (s.online ? ' on' : s.push ? ' push' : '');
       d.title = s.online ? 'çevrimiçi' : s.push ? 'bildirimle ulaşılabilir' : 'çevrimdışı';
-      b.append(d, document.createTextNode('@' + n + (dmUnreadOf(n) ? ' ✉️' + dmUnreadOf(n) : '')));
+      b.append(d, document.createTextNode('@' + n));
       b.onclick = () => { $('callName').value = n; $('callName').focus(); toast(`@${n}: 📞 sesli ya da 📹 görüntülü ara`); };
       box.appendChild(b);
     }
@@ -1700,105 +1699,6 @@
   function stopRingback() { clearInterval(ringback); ringback = null; }
   // Karşı taraf bağlanınca arama sinyalini kapat
   setInterval(() => { if (peerPresent && (callWs || ringback || callPeer)) { stopRingback(); if (callWs) { try { callWs.close(); } catch {} callWs = null; } if (callPeer) { const cp = callPeer; callPeer = null; setTimeout(() => { try { cp.destroy(); } catch {} }, 2000); } } }, 500);
-  // ----- Mesajlar: görüşme dışında, doğrudan telefondan telefona (sunucuda saklanmaz) -----
-  const DM_KEY = 'dusukmb-dm';
-  let dm = lsGet(DM_KEY, { th: {} }); if (!dm || !dm.th) dm = { th: {} };
-  let dmOpen = null, dmPeer = null; const dmBusy = {};
-  const dmSave = () => { for (const k in dm.th) dm.th[k] = dm.th[k].slice(-200); lsSet(DM_KEY, dm); };
-  const dmIsOpen = () => dmOpen && !$('dmSheet').classList.contains('hidden');
-  const dmUnreadOf = (n) => (dm.th[n] || []).filter((m) => !m.mine && !m.seen).length;
-  // Cevapsız aramalar da konuşmaya yazılır
-  function missedCall(who) {
-    who = String(who || '').toLowerCase();
-    if (!NAME_RE.test(who)) { toast('Cevapsız arama', 3000); return; }
-    const th = dm.th[who] = dm.th[who] || [];
-    const open = dmIsOpen() && dmOpen === who;
-    th.push({ id: newId(), mine: false, sys: true, text: '📞 Cevapsız arama', ts: Date.now(), seen: open });
-    dmSave(); dmBadge(); addContact(who);
-    if (open) dmRender(); else { toast(`📞 @${who} aradı, cevapsız kaldı (✉️'de görürsün)`, 4500); refreshContacts(); }
-  }
-  function dmBadge() {
-    const n = Object.keys(dm.th).reduce((a, k) => a + dmUnreadOf(k), 0);
-    $('msgBtn').textContent = n ? '✉️ ' + n : '✉️';
-  }
-  function dmRender() {
-    const box = $('dmList'); box.textContent = '';
-    for (const m of dm.th[dmOpen] || []) {
-      const d = document.createElement('div'); d.className = 'dm-m' + (m.mine ? ' me' : '') + (m.sys ? ' sys' : '');
-      d.textContent = m.text;
-      const s = document.createElement('small');
-      s.textContent = new Date(m.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) + (m.mine ? (m.st === 'sent' ? ' ✓' : ' ⏳') : '');
-      d.appendChild(s); box.appendChild(d);
-    }
-    box.scrollTop = box.scrollHeight;
-  }
-  function handleDm(c, m) {
-    const from = String(m.from || '').toLowerCase();
-    const text = typeof m.text === 'string' ? m.text.slice(0, 1000) : '';
-    const id = String(m.id || '').slice(0, 24);
-    if (!NAME_RE.test(from) || !text || !id) return;
-    const th = dm.th[from] = dm.th[from] || [];
-    if (!th.some((x) => x.id === id)) {
-      const open = dmIsOpen() && dmOpen === from;
-      th.push({ id, mine: false, text, ts: Date.now(), seen: open });
-      dmSave(); dmBadge(); addContact(from);
-      if (open) dmRender();
-      else { toast(`✉️ @${from}: ${text.slice(0, 60)}`, 4500); try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {} refreshContacts(); }
-    }
-    try { c.send({ t: 'dmack', id }); } catch {}
-  }
-  async function dmDeliver(name) {
-    if (dmBusy[name]) return;
-    const pend = (dm.th[name] || []).filter((m) => m.mine && m.st !== 'sent');
-    if (!pend.length || !window.Peer || !me) return;
-    dmBusy[name] = true;
-    let peer = p2pPeer && p2pPeer.open ? p2pPeer : dmPeer;
-    try {
-      if (!peer || peer.destroyed || !peer.open) {
-        try { dmPeer && dmPeer.destroy(); } catch {}
-        peer = dmPeer = new Peer(await peerOpts());
-        await new Promise((res, rej) => { peer.on('open', res); peer.on('error', rej); setTimeout(rej, 8000); });
-      }
-      await new Promise((resolve) => {
-        const c = peer.connect(phoneId(name), { reliable: true });
-        let left = pend.length;
-        const fin = () => { clearTimeout(t); try { c.close(); } catch {} resolve(); };
-        const t = setTimeout(fin, 8000);
-        c.on('open', () => { for (const m of pend) { try { c.send({ t: 'dm', id: m.id, from: me.name, text: m.text, ts: m.ts }); } catch {} } });
-        c.on('data', (a) => {
-          if (!a || a.t !== 'dmack') return;
-          const m = pend.find((x) => x.id === a.id);
-          if (m && m.st !== 'sent') { m.st = 'sent'; dmSave(); if (dmIsOpen() && dmOpen === name) dmRender(); if (--left <= 0) fin(); }
-        });
-        c.on('error', fin); c.on('close', fin);
-      });
-    } catch { try { dmPeer && dmPeer.destroy(); } catch {} dmPeer = null; }
-    dmBusy[name] = false;
-  }
-  function dmRetryAll() { for (const n of Object.keys(dm.th)) if (dm.th[n].some((m) => m.mine && m.st !== 'sent')) dmDeliver(n); }
-  setInterval(() => { if (!room) dmRetryAll(); }, 20000); setTimeout(dmRetryAll, 4000);
-  function dmShow(n) {
-    n = String(n || '').trim().toLowerCase().replace(/^@/, '');
-    if (!NAME_RE.test(n)) { toast('Önce kullanıcı adı yaz'); return; }
-    if (!me) { toast('Mesaj için önce yukarıdan kullanıcı adı alıp "Çevrimiçi ol" de', 4000); return; }
-    if (n === me.name) { toast('Kendine mesaj atamazsın 🙂'); return; }
-    dmOpen = n; $('dmTitle').textContent = '✉️ @' + n;
-    for (const m of dm.th[n] || []) m.seen = true;
-    dmSave(); dmBadge(); dmRender();
-    $('dmSheet').classList.remove('hidden');
-    setTimeout(() => $('dmText').focus(), 100);
-    dmDeliver(n);
-  }
-  function dmSendNow() {
-    const text = $('dmText').value.trim(); if (!text || !dmOpen) return;
-    (dm.th[dmOpen] = dm.th[dmOpen] || []).push({ id: newId(), mine: true, text: text.slice(0, 1000), ts: Date.now(), st: 'wait' });
-    $('dmText').value = ''; addContact(dmOpen); dmSave(); dmRender(); dmDeliver(dmOpen);
-  }
-  $('msgBtn').onclick = () => dmShow($('callName').value);
-  $('dmSend').onclick = dmSendNow;
-  $('dmText').addEventListener('keydown', (e) => { if (e.key === 'Enter') dmSendNow(); });
-  dmBadge();
-
   $('callBtn').onclick = () => callUser($('callName').value, false);
   $('vcallBtn').onclick = () => callUser($('callName').value, true);
   $('callName').addEventListener('keydown', (e) => { if (e.key === 'Enter') callUser($('callName').value, false); });
