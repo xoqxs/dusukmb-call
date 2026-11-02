@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 21; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 22; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
@@ -728,6 +728,13 @@
     const r = await findRoutes();
     speakerOn = on;
     spkUi(on);
+    // iPhone (Safari 16.4+): ses yolunu Audio Session API belirler. play-and-record = ahize, playback = hoparlör
+    if (navigator.audioSession) {
+      try { navigator.audioSession.type = on ? 'playback' : 'play-and-record'; routeInfo = 'audioSession: ' + navigator.audioSession.type; } catch (e) { routeInfo = 'audioSession hata: ' + e.name; }
+      const rs = remoteAudio.srcObject; if (rs) { remoteAudio.srcObject = null; remoteAudio.srcObject = rs; playAudio(); }
+      if (manual) toast(on ? '🔊 Hoparlör' : '📞 Ahize (telefonu kulağına götür)');
+      return;
+    }
     $('spkBtn').title = on ? 'Hoparlör (ahizeye almak için dokun)' : 'Ahize (hoparlöre almak için dokun)';
     if (r.ear && r.spk) {
       const old = localStream.getAudioTracks()[0];
