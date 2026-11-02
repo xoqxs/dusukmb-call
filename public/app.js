@@ -1,5 +1,18 @@
 // DusukMB Call - istemci
 (() => {
+  const APP_V = 21; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
+  (async () => {
+    try {
+      if (/[?&]_v=/.test(location.search)) { // yenilenmiş sayfa: adresi temizle
+        history.replaceState(null, '', location.pathname + location.search.replace(/([?&])_v=\d+&?/, '$1').replace(/[?&]$/, '') + location.hash);
+        return;
+      }
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      const j = await r.json();
+      if (j && j.v > APP_V && !window.__inCall) location.replace(location.pathname + (location.search ? location.search + '&' : '?') + '_v=' + j.v + location.hash);
+    } catch {}
+  })();
   // Bit hızları "kablodaki" toplamı ~hedefe oturtacak şekilde seçildi (RTP/UDP başlıkları ~15-20 kbps ekler)
   const PROFILES = {
     // Hedefler telefon başına TOPLAM (gönderilen + alınan)
@@ -86,7 +99,7 @@
 
   async function start(r, opts = {}) {
     if (!r) { $('room').focus(); return; }
-    room = r;
+    room = r; window.__inCall = true;
     history.replaceState(null, '', `?oda=${encodeURIComponent(room)}`);
     // Görüşme sesle başlar; kamera kullanıcı isteyince açılır (ayarlardan "kamerayla başlasın" seçilebilir)
     const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
@@ -323,7 +336,7 @@
         break;
       case 'bye':
         // Karşı taraf ✕'e basıp görüşmeyi bitirdiyse (end) bizde de kapanır; sayfa yenileme/ağ kopması ise beklemeye devam
-        if (msg.end && !msg.local && peerPresent) {
+        if (!msg.away && !msg.local && peerPresent) {
           peerPresent = false; alertUser('left');
           setStatus('Görüşme sona erdi');
           toast('Karşı taraf görüşmeyi bitirdi', 2500);
@@ -1293,14 +1306,14 @@
   $('hangBtn').onclick = () => {
     if (finishing) return;
     leaving = true;
-    // "end": karşı taraf da görüşmeyi kapatsın (sayfa yenileme/ağ kopması bunu göndermez)
-    signal({ type: 'bye', end: true });
+    // Normal "bye" görüşmeyi bitirir; sayfa yenileme/kapanma ise "away" ile gider ve karşı taraf bekler
+    signal({ type: 'bye' });
     // Mesajın yola çıkması için kısa bir süre tanı, sonra kapat
     setTimeout(finishCall, conn && conn.open ? 350 : 0);
   };
   window.addEventListener('pagehide', (e) => {
     if (leaving || e.persisted) return; // persisted: sayfa önbellekte duruyor (uygulama değişimi), görüşmeyi kesme
-    signal({ type: 'bye' });
+    signal({ type: 'bye', away: true });
     try { if (peer) peer.destroy(); } catch {}
   });
   // Uygulamaya geri dönülünce bağlantı ölmüşse toparla
