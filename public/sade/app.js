@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 22; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 23; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
@@ -59,7 +59,25 @@
   const statusEl = $('status');
   const remoteAudio = $('remoteAudio');
   // Tarayıcı dokunuş olmadan sesi başlatmazsa (davet linkiyle doğrudan girişte) "Sesi aç" düğmesi göster
+  // iPhone: sesi <audio> yerine Web Audio ile çal (ahizeye yönlenmesi için deneme; sorun çıkarsa false yap)
+  const IOS_WEBAUDIO = true;
+  let wa = null;
+  function webAudioPlay() {
+    try {
+      const st = remoteAudio.srcObject; if (!st) return false;
+      if (!wa) { const C = window.AudioContext || window.webkitAudioContext; wa = { ctx: new C(), src: null, sid: null }; }
+      if (wa.sid !== st.id) { try { wa.src && wa.src.disconnect(); } catch {} wa.src = wa.ctx.createMediaStreamSource(st); wa.src.connect(wa.ctx.destination); wa.sid = st.id; }
+      remoteAudio.muted = true; // öğe akışı çekmeye devam eder, ses Web Audio'dan gelir
+      wa.ctx.resume().catch(() => {});
+      return wa.ctx.state === 'running';
+    } catch { remoteAudio.muted = false; return false; }
+  }
   function playAudio() {
+    if (IOS_WEBAUDIO && IS_IOS && remoteAudio.srcObject) {
+      remoteAudio.play().catch(() => {});
+      if (webAudioPlay()) { $('tapAudio').classList.add('hidden'); return; }
+      $('tapAudio').classList.remove('hidden'); return;
+    }
     remoteAudio.play().then(() => $('tapAudio').classList.add('hidden'))
       .catch(() => $('tapAudio').classList.remove('hidden'));
   }
