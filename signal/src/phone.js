@@ -123,36 +123,10 @@ export class UserBox {
     // Kullanıcı adını al (ilk alan sahibi olur) ya da sahibi olduğunu doğrula
     if (url.pathname === '/claim') {
       if (!token || token.length < 16) return json({ error: 'geçersiz anahtar' }, 400);
-      const pin = String(body.pin || '');
-      const pinOk = /^\d{4,6}$/.test(pin);
-      const nm = (q.get('name') || '').toLowerCase();
-      const st = this.state.storage;
-      const h = await st.get('owner');
-      const tokH = await sha256(token);
-      if (!h) {
-        if (!pinOk) return json({ error: 'PIN gerekli: 4-6 rakam' }, 400);
-        await st.put('owner', tokH); await st.put('pin', await sha256('pin:' + nm + ':' + pin));
-        return json({ ok: true, created: true });
-      }
-      if (h === tokH) {
-        if (pinOk && !(await st.get('pin'))) await st.put('pin', await sha256('pin:' + nm + ':' + pin));
-        return json({ ok: true });
-      }
-      // Başka cihaz: PIN ile sahibi olduğunu kanıtlarsa ad bu cihaza taşınır
-      const ph = await st.get('pin');
-      if (!ph) return json({ error: 'Bu kullanıcı adı alınmış, başka bir ad dene' }, 409);
-      const lock = (await st.get('lock')) || { fails: 0, until: 0 };
-      if (lock.until > Date.now()) return json({ error: 'Çok fazla yanlış deneme. Biraz sonra tekrar dene.' }, 429);
-      if (!pinOk) return json({ error: 'Bu ad alınmış. Sahibiysen PIN\'ini gir, değilsen başka ad dene', needPin: true }, 409);
-      if (ph === await sha256('pin:' + nm + ':' + pin)) {
-        await st.put('owner', tokH); await st.delete('lock');
-        this.send(this.owners(), { t: 'auth' }); // eski cihazın bağlantısını düşür
-        return json({ ok: true, recovered: true });
-      }
-      lock.fails += 1;
-      if (lock.fails >= 5) { lock.until = Date.now() + 15 * 60 * 1000; lock.fails = 0; }
-      await st.put('lock', lock);
-      return json({ error: 'PIN yanlış', needPin: true }, 403);
+      const h = await this.state.storage.get('owner');
+      if (!h) { await this.state.storage.put('owner', await sha256(token)); return json({ ok: true, created: true }); }
+      if (h === await sha256(token)) return json({ ok: true });
+      return json({ error: 'Bu kullanıcı adı alınmış, başka bir ad dene' }, 409);
     }
 
     if (q.get('role') === 'owner' || q.get('role') === 'caller') {
