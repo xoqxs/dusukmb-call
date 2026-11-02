@@ -32,6 +32,8 @@
           <input id="myName" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="örn: kadir" maxlength="20" enterkeyhint="go">
           <button id="goOnline">Çevrimiçi ol</button>
         </div>
+        <input id="myPin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="PIN (4-6 rakam)" style="margin-top:8px;width:100%">
+        <p class="hint">PIN'i unutma: telefon değişirse ya da tarayıcı verisi silinirse adını bu PIN ile geri alırsın. Unutursan geri almanın yolu yok.</p>
         <p class="hint">Çevrimiçi olunca seni bu adla arayabilirler; sayfa arkada açık kalsın, arayan olunca telefon çalar.</p>
       </div>
       <div id="meOn" class="hidden">
@@ -225,6 +227,6 @@
   <script src="peerjs.min.js?v=1"></script>
   <script src="qrcode.js?v=1"></script>
   <script src="enhance.js?v=4"></script>
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>
