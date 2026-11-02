@@ -1,6 +1,6 @@
 // DusukMB Call - istemci
 (() => {
-  const APP_V = 26; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
+  const APP_V = 25; // her yayında version.json ve index.html'deki ?v= ile birlikte artırılır
   // Yeni sürüm yayınlandıysa açılışta kendini yeniler (telefonlar eski dosyayı önbellekte tutabiliyor)
   (async () => {
     try {
@@ -1428,13 +1428,9 @@
     const name = $('myName').value.trim().toLowerCase().replace(/^@/, '');
     if (!NAME_RE.test(name)) { toast('Kullanıcı adı 3-20 karakter: harf, rakam, . _ -', 3500); return; }
     if (!me || me.name !== name) {
-      const pin = ($('myPin').value || '').trim();
-      if (!/^\d{4,6}$/.test(pin)) { toast('PIN yaz: 4-6 rakam (adını sonradan geri almak için)', 3500); $('myPin').focus(); return; }
       const token = me && me.token ? me.token : [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
-      const r = await api('/phone/claim?' + nameQ(name), { token, pin });
-      if (!r.ok && !r.netError) { toast(r.error || 'Sunucuya ulaşılamadı', 4000); return; }
-      if (r.recovered) toast('Adın geri alındı: @' + name, 3500);
-      $('myPin').value = '';
+      const r = await api('/phone/claim?' + nameQ(name), { token });
+      if (!r.ok && !r.netError) { toast(r.error || 'Sunucuya ulaşılamadı', 3500); return; }
       // Bildirim sunucusuna ulaşılamadıysa ad sadece bu cihazda tutulur; doğrudan arama yine çalışır
       me = { name, token, unclaimed: !!r.netError }; lsSet(ME_KEY, me);
     }
